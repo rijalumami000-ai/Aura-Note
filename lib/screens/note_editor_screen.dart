@@ -454,7 +454,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Membaca teks, memilah tugas kritis, dan menyusun ringkasan penting...',
+                'Membaca teks, memilah tugas kritis, dan menyusun ringkasan secara lokal di perangkat Anda (100% Offline & Privat demi menjaga Enkripsi End-to-end).',
                 style: TextStyle(
                   fontSize: 11,
                   color: AppTheme.textSecondary,
@@ -482,7 +482,9 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(
-            _isNewNote ? TranslationHelper.translateReactive(context, 'editor_new') : TranslationHelper.translateReactive(context, 'editor_edit'),
+            _isNewNote
+                ? TranslationHelper.translateReactive(context, 'editor_new')
+                : TranslationHelper.translateReactive(context, 'editor_edit'),
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           actions: [
@@ -492,55 +494,18 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
               tooltip: 'Rangkum dengan AuraAI',
               onPressed: _runAISummary,
             ),
-            // AuraLock Biometric Toggle Button
-            IconButton(
-              icon: Icon(
-                _isLocked ? Icons.lock : Icons.lock_open_outlined,
-                color: _isLocked ? Colors.redAccent : AppTheme.textPrimary,
-              ),
-              tooltip: _isLocked ? 'Buka Kunci Catatan' : 'Kunci Catatan',
-              onPressed: _toggleLockWithBiometrics,
-            ),
             // AuraSchedule Reminder Button
             IconButton(
               icon: Icon(
-                _reminderDate != null ? Icons.notifications_active : Icons.notifications_none_outlined,
+                _reminderDate != null
+                    ? Icons.notifications_active
+                    : Icons.notifications_none_outlined,
                 color: _reminderDate != null ? auraColor : AppTheme.textPrimary,
               ),
               tooltip: _reminderDate != null
                   ? 'Ubah/Hapus Pengingat (${_formatReminderLabel(_reminderDate!)})'
                   : 'Atur Pengingat',
               onPressed: _showReminderPicker,
-            ),
-            // AuraMind Mind Map Button
-            IconButton(
-              icon: const Icon(Icons.hub_outlined, color: AppTheme.accent),
-              tooltip: 'Visualisasi Peta Pikiran AuraMind',
-              onPressed: () {
-                _saveNote();
-                final note = Note(
-                  id: _id,
-                  title: _titleController.text.trim(),
-                  content: _contentController.text.trim(),
-                  category: _selectedCategory,
-                  dateCreated: widget.note?.dateCreated ?? DateTime.now(),
-                  dateModified: DateTime.now(),
-                  isPinned: _isPinned,
-                  isArchived: _isArchived,
-                  isTrashed: widget.note?.isTrashed ?? false,
-                  isLocked: _isLocked,
-                  reminderDate: _reminderDate,
-                  todos: _todos,
-                  sketchStrokes: _sketchStrokes,
-                  aiSummary: _aiSummary,
-                );
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => MindMapScreen(note: note),
-                  ),
-                );
-              },
             ),
             // AuraCover Palette Button
             IconButton(
@@ -551,138 +516,187 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
               tooltip: 'Pilih Sampul Catatan AuraCover',
               onPressed: _showAuraCoverSheet,
             ),
-            // Sketch Canvas Button
-            IconButton(
-              icon: Icon(
-                Icons.brush,
-                color: _sketchStrokes.isNotEmpty ? auraColor : AppTheme.textPrimary,
-              ),
-              tooltip: 'AuraDraw Kanvas Gambar',
-              onPressed: () async {
-                final result = await Navigator.push<List<DrawingStroke>>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => DrawingCanvasScreen(
-                      initialStrokes: _sketchStrokes,
-                      category: _selectedCategory,
-                    ),
-                  ),
-                );
-                if (result != null) {
-                  setState(() {
-                    _sketchStrokes = result;
-                  });
-                  _saveNote();
-                }
-              },
-            ),
-            // Pin Toggle Button
-            IconButton(
-              icon: Icon(
-                _isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                color: _isPinned ? auraColor : AppTheme.textPrimary,
-              ),
-              onPressed: () {
-                setState(() {
-                  _isPinned = !_isPinned;
-                });
-                _saveNote();
-              },
-            ),
-            // Archive Toggle Button
-            IconButton(
-              icon: Icon(
-                _isArchived ? Icons.archive : Icons.archive_outlined,
-                color: _isArchived ? auraColor : AppTheme.textPrimary,
-              ),
-              onPressed: () {
-                setState(() {
-                  _isArchived = !_isArchived;
-                  if (_isArchived) _isPinned = false; // Archive automatically unpins
-                });
-                _saveNote();
-                // Pop with message
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      _isArchived ? 'Catatan diarsipkan' : 'Catatan dipulihkan dari arsip',
-                      style: const TextStyle(fontFamily: 'Outfit'),
-                    ),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-                Navigator.pop(context);
-              },
-            ),
-            // Popup Menu Button for Extra Actions
+            // Overflow Menu — semua aksi tambahan
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: AppTheme.textPrimary),
+              color: AppTheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.white.withOpacity(0.08)),
+              ),
               onSelected: (value) {
-                if (value == 'delete') {
-                  // Move to trash
-                  final provider = context.read<NoteProvider>();
-                  provider.moveToTrash(_id);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Catatan dipindahkan ke sampah', style: TextStyle(fontFamily: 'Outfit')),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                  Navigator.pop(context); // Go back to Home
-                } else if (value == 'lock') {
-                  _toggleLockWithBiometrics();
-                } else if (value == 'archive') {
-                  setState(() {
-                    _isArchived = !_isArchived;
-                    if (_isArchived) _isPinned = false;
-                  });
-                  _saveNote();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(_isArchived ? 'Catatan diarsipkan' : 'Catatan dipulihkan dari arsip', style: const TextStyle(fontFamily: 'Outfit')),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                  Navigator.pop(context);
+                switch (value) {
+                  case 'pin':
+                    setState(() { _isPinned = !_isPinned; });
+                    _saveNote();
+                    ScaffoldMessenger.of(context)
+                      ..clearSnackBars()
+                      ..showSnackBar(SnackBar(
+                        content: Text(
+                          _isPinned ? 'Catatan disematkan' : 'Catatan dilepas sematan',
+                          style: const TextStyle(fontFamily: 'Outfit'),
+                        ),
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ));
+                    break;
+                  case 'lock':
+                    _toggleLockWithBiometrics();
+                    break;
+                  case 'archive':
+                    setState(() {
+                      _isArchived = !_isArchived;
+                      if (_isArchived) _isPinned = false;
+                    });
+                    _saveNote();
+                    ScaffoldMessenger.of(context)
+                      ..clearSnackBars()
+                      ..showSnackBar(SnackBar(
+                        content: Text(
+                          _isArchived ? 'Catatan diarsipkan' : 'Catatan dipulihkan dari arsip',
+                          style: const TextStyle(fontFamily: 'Outfit'),
+                        ),
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ));
+                    Navigator.pop(context);
+                    break;
+                  case 'mindmap':
+                    _saveNote();
+                    final note = Note(
+                      id: _id,
+                      title: _titleController.text.trim(),
+                      content: _contentController.text.trim(),
+                      category: _selectedCategory,
+                      dateCreated: widget.note?.dateCreated ?? DateTime.now(),
+                      dateModified: DateTime.now(),
+                      isPinned: _isPinned,
+                      isArchived: _isArchived,
+                      isTrashed: widget.note?.isTrashed ?? false,
+                      isLocked: _isLocked,
+                      reminderDate: _reminderDate,
+                      todos: _todos,
+                      sketchStrokes: _sketchStrokes,
+                      aiSummary: _aiSummary,
+                    );
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => MindMapScreen(note: note)),
+                    );
+                    break;
+                  case 'draw':
+                    Navigator.push<List<DrawingStroke>>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DrawingCanvasScreen(
+                          initialStrokes: _sketchStrokes,
+                          category: _selectedCategory,
+                        ),
+                      ),
+                    ).then((result) {
+                      if (result != null) {
+                        setState(() { _sketchStrokes = result; });
+                        _saveNote();
+                      }
+                    });
+                    break;
+                  case 'delete':
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: AppTheme.surface,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(color: Colors.redAccent.withOpacity(0.3)),
+                        ),
+                        title: const Text('Hapus Catatan?', style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold)),
+                        content: const Text('Catatan akan dipindahkan ke Tempat Sampah.', style: TextStyle(fontFamily: 'Outfit')),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Batal', style: TextStyle(fontFamily: 'Outfit')),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              final provider = context.read<NoteProvider>();
+                              provider.moveToTrash(_id);
+                              ScaffoldMessenger.of(context)
+                                ..clearSnackBars()
+                                ..showSnackBar(const SnackBar(
+                                  content: Text('Catatan dipindahkan ke sampah', style: TextStyle(fontFamily: 'Outfit')),
+                                  duration: Duration(seconds: 2),
+                                  behavior: SnackBarBehavior.floating,
+                                ));
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Hapus', style: TextStyle(color: Colors.redAccent, fontFamily: 'Outfit')),
+                          ),
+                        ],
+                      ),
+                    );
+                    break;
                 }
               },
               itemBuilder: (ctx) => [
                 PopupMenuItem(
-                  value: 'archive',
-                  child: Row(
-                    children: [
-                      Icon(_isArchived ? Icons.unarchive : Icons.archive, color: AppTheme.textPrimary, size: 20),
-                      const SizedBox(width: 8),
-                      Text(_isArchived ? 'Buka Arsip' : 'Arsipkan'),
-                    ],
-                  ),
+                  value: 'pin',
+                  child: Row(children: [
+                    Icon(_isPinned ? Icons.push_pin : Icons.push_pin_outlined, size: 20, color: _isPinned ? auraColor : AppTheme.textPrimary),
+                    const SizedBox(width: 10),
+                    Text(_isPinned ? 'Lepas Sematan' : 'Sematkan', style: const TextStyle(fontFamily: 'Outfit')),
+                  ]),
                 ),
                 PopupMenuItem(
                   value: 'lock',
-                  child: Row(
-                    children: [
-                      Icon(_isLocked ? Icons.lock_open : Icons.lock, color: AppTheme.textPrimary, size: 20),
-                      const SizedBox(width: 8),
-                      Text(_isLocked ? 'Buka Kunci' : 'Kunci Catatan'),
-                    ],
-                  ),
+                  child: Row(children: [
+                    Icon(_isLocked ? Icons.lock_open : Icons.lock, size: 20, color: _isLocked ? Colors.redAccent : AppTheme.textPrimary),
+                    const SizedBox(width: 10),
+                    Text(_isLocked ? 'Buka Kunci' : 'Kunci Catatan', style: const TextStyle(fontFamily: 'Outfit')),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'archive',
+                  child: Row(children: [
+                    Icon(_isArchived ? Icons.unarchive : Icons.archive_outlined, size: 20, color: AppTheme.textPrimary),
+                    const SizedBox(width: 10),
+                    Text(_isArchived ? 'Buka Arsip' : 'Arsipkan', style: const TextStyle(fontFamily: 'Outfit')),
+                  ]),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'mindmap',
+                  child: Row(children: [
+                    const Icon(Icons.hub_outlined, size: 20, color: AppTheme.accent),
+                    const SizedBox(width: 10),
+                    const Text('AuraMind (Peta Pikiran)', style: TextStyle(fontFamily: 'Outfit')),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'draw',
+                  child: Row(children: [
+                    Icon(Icons.brush, size: 20, color: _sketchStrokes.isNotEmpty ? auraColor : AppTheme.textPrimary),
+                    const SizedBox(width: 10),
+                    const Text('AuraDraw (Kanvas)', style: TextStyle(fontFamily: 'Outfit')),
+                  ]),
                 ),
                 const PopupMenuDivider(),
                 const PopupMenuItem(
                   value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                      const SizedBox(width: 8),
-                      Text('Hapus', style: TextStyle(color: Colors.redAccent)),
-                    ],
-                  ),
+                  child: Row(children: [
+                    Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+                    SizedBox(width: 10),
+                    Text('Hapus Catatan', style: TextStyle(color: Colors.redAccent, fontFamily: 'Outfit')),
+                  ]),
                 ),
               ],
             ),
-            // Confirm/Check button (Manual Save/Done)
+            // Simpan & Tutup
             IconButton(
-              icon: const Icon(Icons.check, color: Colors.greenAccent),
+              icon: const Icon(Icons.check_rounded, color: Colors.greenAccent),
+              tooltip: 'Simpan',
               onPressed: () {
                 _saveNote();
                 Navigator.pop(context);

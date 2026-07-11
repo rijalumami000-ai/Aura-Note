@@ -6,6 +6,7 @@ import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/note_editor_screen.dart';
 import 'utils/translation_helper.dart';
 
 void main() {
@@ -41,8 +42,11 @@ class MainNavigationScreen extends StatefulWidget {
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends State<MainNavigationScreen>
+    with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
+  late AnimationController _fabAnimController;
+  late Animation<double> _fabScaleAnim;
 
   final List<Widget> _screens = [
     const HomeScreen(),
@@ -51,45 +55,166 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _fabAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    )..forward();
+    _fabScaleAnim = CurvedAnimation(
+      parent: _fabAnimController,
+      curve: Curves.easeOutBack,
+    );
+  }
+
+  @override
+  void dispose() {
+    _fabAnimController.dispose();
+    super.dispose();
+  }
+
+  void _onNavTap(int index) {
+    setState(() {
+      _currentIndex = index;
+      _fabAnimController.reset();
+      _fabAnimController.forward();
+    });
+  }
+
+  void _openNoteEditor() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const NoteEditorScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.1),
+              end: Offset.zero,
+            ).animate(curved),
+            child: FadeTransition(opacity: curved, child: child),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 350),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true, // Allows the screens to render behind the floating bottom bar
-      body: _screens[_currentIndex],
+      extendBody: true,
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _screens,
+      ),
       bottomNavigationBar: _buildFloatingBottomBar(),
     );
   }
 
-  // A custom, premium floating glassmorphic bottom navigation bar
   Widget _buildFloatingBottomBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
-            height: 68,
+            height: 72,
             decoration: BoxDecoration(
-              color: AppTheme.surface.withOpacity(0.75),
-              borderRadius: BorderRadius.circular(24),
+              color: AppTheme.surface.withOpacity(0.80),
+              borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: Colors.white.withOpacity(0.08),
+                color: Colors.white.withOpacity(0.10),
                 width: 1.0,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 16,
+                  color: Colors.black.withOpacity(0.35),
+                  blurRadius: 20,
                   offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  color: AppTheme.accent.withOpacity(0.08),
+                  blurRadius: 30,
+                  offset: const Offset(0, -4),
                 ),
               ],
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildNavItem(0, Icons.description_rounded, Icons.description_outlined, TranslationHelper.translateReactive(context, 'tab_notes')),
-                _buildNavItem(1, Icons.calendar_today_rounded, Icons.calendar_today_outlined, TranslationHelper.translateReactive(context, 'tab_schedule')),
-                _buildNavItem(2, Icons.analytics_rounded, Icons.analytics_outlined, TranslationHelper.translateReactive(context, 'tab_dashboard')),
+                // Tab Catatan
+                _buildNavItem(
+                  0,
+                  Icons.description_rounded,
+                  Icons.description_outlined,
+                  TranslationHelper.translateReactive(context, 'tab_notes'),
+                ),
+
+                // Center FAB — Tombol Tambah
+                Expanded(
+                  child: Center(
+                    child: ScaleTransition(
+                      scale: _fabScaleAnim,
+                      child: GestureDetector(
+                        onTap: _openNoteEditor,
+                        child: Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [AppTheme.accent, Color(0xFFC71585)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.accent.withOpacity(0.50),
+                                blurRadius: 18,
+                                offset: const Offset(0, 6),
+                              ),
+                              BoxShadow(
+                                color: const Color(0xFFC71585).withOpacity(0.25),
+                                blurRadius: 12,
+                                spreadRadius: -2,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.add_rounded,
+                            color: Colors.white,
+                            size: 30,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Tab Kalender
+                _buildNavItem(
+                  1,
+                  Icons.calendar_today_rounded,
+                  Icons.calendar_today_outlined,
+                  TranslationHelper.translateReactive(context, 'tab_schedule'),
+                ),
+
+                // Spacer antara Kalender & Dashboard
+                const SizedBox(width: 6),
+
+                // Tab Dashboard
+                _buildNavItem(
+                  2,
+                  Icons.analytics_rounded,
+                  Icons.analytics_outlined,
+                  TranslationHelper.translateReactive(context, 'tab_dashboard'),
+                ),
               ],
             ),
           ),
@@ -98,18 +223,19 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // Builder for navigation items
-  Widget _buildNavItem(int index, IconData activeIcon, IconData inactiveIcon, String label) {
+  Widget _buildNavItem(
+    int index,
+    IconData activeIcon,
+    IconData inactiveIcon,
+    String label,
+  ) {
     final isSelected = _currentIndex == index;
-    final iconColor = isSelected ? AppTheme.accent : AppTheme.textSecondary;
+    final iconColor =
+        isSelected ? AppTheme.accent : AppTheme.textSecondary;
 
     return Expanded(
       child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onTap: () => _onNavTap(index),
         behavior: HitTestBehavior.opaque,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -117,14 +243,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: isSelected ? AppTheme.accent.withOpacity(0.08) : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
+                color: isSelected
+                    ? AppTheme.accent.withOpacity(0.10)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
                 boxShadow: isSelected
                     ? [
                         BoxShadow(
-                          color: AppTheme.accent.withOpacity(0.1),
+                          color: AppTheme.accent.withOpacity(0.12),
                           blurRadius: 10,
                           spreadRadius: -2,
                         )
@@ -134,19 +262,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               child: Icon(
                 isSelected ? activeIcon : inactiveIcon,
                 color: iconColor,
-                size: 24,
+                size: 22,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
+            const SizedBox(height: 3),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 200),
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 9,
                 color: iconColor,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontWeight:
+                    isSelected ? FontWeight.bold : FontWeight.normal,
                 fontFamily: 'Outfit',
-                letterSpacing: 0.5,
+                letterSpacing: 0.3,
               ),
+              child: Text(label),
             ),
           ],
         ),

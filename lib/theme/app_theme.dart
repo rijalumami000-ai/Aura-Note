@@ -19,7 +19,16 @@ class AppTheme {
   };
 
   static List<Color> getGradientForCategory(String category) {
-    return categoryGradients[category] ?? [accent, accent.withOpacity(0.5)];
+    if (categoryGradients.containsKey(category)) {
+      return categoryGradients[category]!;
+    }
+    // Generate a beautiful distinct gradient dynamically based on the category name's hash
+    final int hash = category.hashCode;
+    final double hue1 = (hash.abs() % 360).toDouble();
+    final double hue2 = ((hash.abs() + 80) % 360).toDouble(); // 80 degrees shift for beautiful complementary colors
+    final Color c1 = HSVColor.fromAHSV(1.0, hue1, 0.65, 0.9).toColor();
+    final Color c2 = HSVColor.fromAHSV(1.0, hue2, 0.75, 0.8).toColor();
+    return [c1, c2];
   }
 
   static Color getColorForCategory(String category) {

@@ -11,6 +11,8 @@ class NoteProvider extends ChangeNotifier {
   bool _isLoading = true;
   String _searchQuery = '';
   String _selectedCategory = 'Semua';
+  String _selectedTypeFilter = 'Semua'; // 'Semua', 'Catatan', 'Tugas'
+  List<String> _customCategories = [];
   String _languageCode = 'id'; // New field
   String? _googleEmail; // New field
   String? _lastSyncTime; // New field
@@ -22,6 +24,16 @@ class NoteProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String get searchQuery => _searchQuery;
   String get selectedCategory => _selectedCategory;
+  String get selectedTypeFilter => _selectedTypeFilter;
+  List<String> get customCategories => _customCategories;
+  List<String> get allCategories => [
+    'Pekerjaan',
+    'Pribadi',
+    'Ide',
+    'Keuangan',
+    'Gaya Hidup',
+    ..._customCategories,
+  ];
   String get languageCode => _languageCode; // Getter
   String? get googleEmail => _googleEmail; // Getter
   String? get lastSyncTime => _lastSyncTime; // Getter
@@ -48,6 +60,7 @@ class NoteProvider extends ChangeNotifier {
       _isSyncEnabled = prefs.getBool('auranote_is_sync_enabled') ?? false;
       _isE2eeEnabled = prefs.getBool('auranote_is_e2ee_enabled') ?? false;
       _e2eePassphrase = prefs.getString('auranote_e2ee_passphrase');
+      _customCategories = prefs.getStringList('auranote_custom_categories') ?? [];
       final String? notesJson = prefs.getString(_storageKey);
       if (notesJson != null) {
         final List<dynamic> decodedList = json.decode(notesJson);
@@ -110,6 +123,52 @@ class NoteProvider extends ChangeNotifier {
   void setSelectedCategory(String category) {
     _selectedCategory = category;
     notifyListeners();
+  }
+
+  // Set type filter (Semua, Catatan, Tugas)
+  void setSelectedTypeFilter(String type) {
+    _selectedTypeFilter = type;
+    notifyListeners();
+  }
+
+  // Add custom category
+  Future<void> addCategory(String category) async {
+    final cleanCategory = category.trim();
+    if (cleanCategory.isNotEmpty && !allCategories.contains(cleanCategory)) {
+      _customCategories.add(cleanCategory);
+      notifyListeners();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setStringList('auranote_custom_categories', _customCategories);
+      } catch (e) {
+        debugPrint('Error saving custom categories: $e');
+      }
+    }
+  }
+
+  // Remove custom category
+  Future<void> removeCategory(String category) async {
+    if (_customCategories.contains(category)) {
+      _customCategories.remove(category);
+      if (_selectedCategory == category) {
+        _selectedCategory = 'Semua';
+      }
+      
+      // Update any notes under this category to default category 'Pribadi'
+      for (int i = 0; i < _notes.length; i++) {
+        if (_notes[i].category == category) {
+          _notes[i] = _notes[i].copyWith(category: 'Pribadi', dateModified: DateTime.now());
+        }
+      }
+      notifyListeners();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setStringList('auranote_custom_categories', _customCategories);
+        await saveNotesToStorage();
+      } catch (e) {
+        debugPrint('Error removing custom category: $e');
+      }
+    }
   }
 
   // Set language setting
@@ -261,6 +320,14 @@ class NoteProvider extends ChangeNotifier {
 
       if (getPinned && !note.isPinned) return false;
       if (!getPinned && note.isPinned) return false;
+
+      // Filter by type
+      if (_selectedTypeFilter == 'Catatan' && note.todos.isNotEmpty) {
+        return false;
+      }
+      if (_selectedTypeFilter == 'Tugas' && note.todos.isEmpty) {
+        return false;
+      }
 
       // Filter by category
       if (_selectedCategory != 'Semua' && note.category != _selectedCategory) {
@@ -522,17 +589,16 @@ class NoteProvider extends ChangeNotifier {
     double todoProgress = totalTodos > 0 ? (completedTodos / totalTodos) : 0.0;
 
     // Category distribution
-    Map<String, int> categoriesCount = {
-      'Pekerjaan': 0,
-      'Pribadi': 0,
-      'Ide': 0,
-      'Keuangan': 0,
-      'Gaya Hidup': 0,
-    };
+    Map<String, int> categoriesCount = {};
+    for (var cat in allCategories) {
+      categoriesCount[cat] = 0;
+    }
 
     for (var note in _notes.where((n) => !n.isTrashed && !n.isArchived)) {
       if (categoriesCount.containsKey(note.category)) {
         categoriesCount[note.category] = categoriesCount[note.category]! + 1;
+      } else {
+        categoriesCount[note.category] = 1;
       }
     }
 

@@ -186,11 +186,43 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Row(
                             children: [
                               _buildCategoryTab('Semua', noteProvider),
-                              ...AppTheme.categoryGradients.keys.map(
+                              ...noteProvider.allCategories.map(
                                 (cat) => _buildCategoryTab(cat, noteProvider),
+                              ),
+                              // Tombol Kelola Kategori
+                              Container(
+                                margin: const EdgeInsets.only(left: 4),
+                                child: IconButton(
+                                  onPressed: () => _showManageCategoriesDialog(noteProvider),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: AppTheme.surface.withOpacity(0.5),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      side: BorderSide(color: Colors.white.withOpacity(0.08)),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.settings_outlined, color: AppTheme.textSecondary, size: 20),
+                                  tooltip: 'Kelola Kategori',
+                                ),
                               ),
                             ],
                           ),
+                        ),
+                      ),
+                    ),
+
+                    // Content Type Filter (Semua, Catatan, Tugas)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
+                        child: Row(
+                          children: [
+                            _buildTypeFilterChip('Semua', Icons.grid_view_rounded, noteProvider),
+                            const SizedBox(width: 10),
+                            _buildTypeFilterChip('Catatan', Icons.notes_rounded, noteProvider),
+                            const SizedBox(width: 10),
+                            _buildTypeFilterChip('Tugas', Icons.check_box_outlined, noteProvider),
+                          ],
                         ),
                       ),
                     ),
@@ -309,45 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
-          // Floating Action Button
-          floatingActionButton: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.accent.withOpacity(0.4),
-                  blurRadius: 18,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [AppTheme.accent, Color(0xFFC71585)], // Violet to Medium Violet Red
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: FloatingActionButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const NoteEditorScreen(),
-                      ),
-                    );
-                  },
-                  backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  highlightElevation: 0,
-                  child: const Icon(Icons.add, color: Colors.white, size: 28),
-                ),
-              ),
-            ),
-          ),
+          // Floating Action Button has been removed because it is now cleanly integrated into the center of the premium main.dart navigation bar
         );
       },
     );
@@ -540,6 +534,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         backgroundColor: AppTheme.surface.withOpacity(0.9),
         behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2), // Auto-dismiss within 2 seconds for swift UX
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(color: Colors.white.withOpacity(0.08)),
@@ -550,6 +545,185 @@ class _HomeScreenState extends State<HomeScreen> {
           onPressed: onUndo,
         ),
       ),
+    );
+  }
+
+  // Type filter chip builder
+  Widget _buildTypeFilterChip(String type, IconData icon, NoteProvider provider) {
+    final isSelected = provider.selectedTypeFilter == type;
+    
+    return InkWell(
+      onTap: () {
+        provider.setSelectedTypeFilter(type);
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.accent.withOpacity(0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppTheme.accent.withOpacity(0.4) : Colors.white.withOpacity(0.05),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? AppTheme.accent : AppTheme.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              type,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? AppTheme.textPrimary : AppTheme.textSecondary,
+                fontFamily: 'Outfit',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Manage categories dialog
+  void _showManageCategoriesDialog(NoteProvider noteProvider) {
+    final TextEditingController catController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppTheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+                side: BorderSide(color: Colors.white.withOpacity(0.08)),
+              ),
+              title: const Text(
+                'Kelola Kategori',
+                style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold),
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: catController,
+                            style: const TextStyle(color: AppTheme.textPrimary),
+                            decoration: InputDecoration(
+                              hintText: 'Nama kategori baru...',
+                              hintStyle: TextStyle(color: AppTheme.textSecondary.withOpacity(0.5)),
+                              filled: true,
+                              fillColor: Colors.black.withOpacity(0.2),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.add_box_rounded, color: AppTheme.accent, size: 36),
+                          onPressed: () async {
+                            final name = catController.text.trim();
+                            if (name.isNotEmpty) {
+                              await noteProvider.addCategory(name);
+                              catController.clear();
+                              setDialogState(() {});
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(color: Colors.white10),
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: noteProvider.customCategories.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24),
+                              child: Text(
+                                'Belum ada kategori kustom.',
+                                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                              ),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: noteProvider.customCategories.length,
+                              itemBuilder: (context, index) {
+                                final cat = noteProvider.customCategories[index];
+                                final themeColor = AppTheme.getColorForCategory(cat);
+                                return Container(
+                                  margin: const EdgeInsets.symmetric(vertical: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: themeColor.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: themeColor.withOpacity(0.2)),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              gradient: LinearGradient(
+                                                colors: AppTheme.getGradientForCategory(cat),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Text(
+                                            cat,
+                                            style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w500),
+                                          ),
+                                        ],
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                        onPressed: () async {
+                                          await noteProvider.removeCategory(cat);
+                                          setDialogState(() {});
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Selesai', style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold, color: AppTheme.accent)),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
