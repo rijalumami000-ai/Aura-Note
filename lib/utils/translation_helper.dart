@@ -487,6 +487,19 @@ class TranslationHelper {
       final noteProvider = Provider.of<NoteProvider>(context, listen: false);
       final lang = noteProvider.languageCode;
 
+      if (key == 'tab_trash_archive') {
+        if (lang == 'en') return 'Trash & Archive';
+        if (lang == 'ar') return 'المهملات والأرشيف';
+        if (lang == 'zh') return '废纸篓和归档';
+        if (lang == 'ru') return 'Корзина и архив';
+        if (lang == 'ja') return 'ゴミ箱とアーカイブ';
+        if (lang == 'ko') return '휴지통 및 보관';
+        if (lang == 'hi') return 'कचरा और संग्रह';
+        if (lang == 'de') return 'Papierkorb & Archiv';
+        if (lang == 'es') return 'Papelera y archivo';
+        if (lang == 'fr') return 'Corbeille & Archive';
+        return 'Sampah & Arsip';
+      }
       if (key == 'Catatan Tanpa Judul') {
         if (lang == 'en') return 'Untitled Note';
         if (lang == 'ar') return 'ملاحظة بدون عنوان';
@@ -803,6 +816,19 @@ class TranslationHelper {
     final noteProvider = Provider.of<NoteProvider>(context);
     final lang = noteProvider.languageCode;
 
+    if (key == 'tab_trash_archive') {
+      if (lang == 'en') return 'Trash & Archive';
+      if (lang == 'ar') return 'المهملات والأرشيف';
+      if (lang == 'zh') return '废纸篓和归档';
+      if (lang == 'ru') return 'Корзина и архив';
+      if (lang == 'ja') return 'ゴミ箱とアーカイブ';
+      if (lang == 'ko') return '휴지통 및 보관';
+      if (lang == 'hi') return 'कचरा और संग्रह';
+      if (lang == 'de') return 'Papierkorb & Archiv';
+      if (lang == 'es') return 'Papelera y archivo';
+      if (lang == 'fr') return 'Corbeille & Archive';
+      return 'Sampah & Arsip';
+    }
     if (key == 'Catatan Tanpa Judul') {
       if (lang == 'en') return 'Untitled Note';
       if (lang == 'ar') return 'ملاحظة بدون عنوان';

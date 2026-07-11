@@ -8,8 +8,13 @@ import '../utils/translation_helper.dart';
 
 class TrashArchiveScreen extends StatefulWidget {
   final int initialTab; // 0 = Trash, 1 = Archive
+  final bool showBackButton;
 
-  const TrashArchiveScreen({super.key, this.initialTab = 0});
+  const TrashArchiveScreen({
+    super.key,
+    this.initialTab = 0,
+    this.showBackButton = true,
+  });
 
   @override
   State<TrashArchiveScreen> createState() => _TrashArchiveScreenState();
@@ -42,10 +47,13 @@ class _TrashArchiveScreenState extends State<TrashArchiveScreen> with SingleTick
           appBar: AppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_rounded, color: AppTheme.textPrimary),
-              onPressed: () => Navigator.pop(context),
-            ),
+            leading: widget.showBackButton
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_rounded, color: AppTheme.textPrimary),
+                    onPressed: () => Navigator.pop(context),
+                  )
+                : null,
+            automaticallyImplyLeading: widget.showBackButton,
             title: Text(
               _tabController.index == 0
                   ? (provider.languageCode == 'en' ? 'Trash' : 'Tempat Sampah')

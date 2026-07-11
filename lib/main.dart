@@ -6,6 +6,7 @@ import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/trash_archive_screen.dart';
 import 'screens/note_editor_screen.dart';
 import 'utils/translation_helper.dart';
 
@@ -51,6 +52,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
   final List<Widget> _screens = [
     const HomeScreen(),
     const CalendarScreen(),
+    const TrashArchiveScreen(showBackButton: false),
     const DashboardScreen(),
   ];
 
@@ -119,7 +121,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   Widget _buildFloatingBottomBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
         child: BackdropFilter(
@@ -148,12 +150,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             ),
             child: Row(
               children: [
-                // Tab Catatan
+                // Tab Catatan (Kiri 1)
                 _buildNavItem(
                   0,
                   Icons.description_rounded,
                   Icons.description_outlined,
                   TranslationHelper.translateReactive(context, 'tab_notes'),
+                ),
+
+                // Tab Kalender (Kiri 2)
+                _buildNavItem(
+                  1,
+                  Icons.calendar_today_rounded,
+                  Icons.calendar_today_outlined,
+                  TranslationHelper.translateReactive(context, 'tab_schedule'),
                 ),
 
                 // Center FAB — Tombol Tambah
@@ -197,20 +207,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                   ),
                 ),
 
-                // Tab Kalender
-                _buildNavItem(
-                  1,
-                  Icons.calendar_today_rounded,
-                  Icons.calendar_today_outlined,
-                  TranslationHelper.translateReactive(context, 'tab_schedule'),
-                ),
-
-                // Spacer antara Kalender & Dashboard
-                const SizedBox(width: 6),
-
-                // Tab Dashboard
+                // Tab Sampah & Arsip (Kanan 1)
                 _buildNavItem(
                   2,
+                  Icons.delete_outline_rounded,
+                  Icons.delete_outline_rounded,
+                  TranslationHelper.translateReactive(context, 'tab_trash_archive'),
+                ),
+
+                // Tab Dashboard (Kanan 2)
+                _buildNavItem(
+                  3,
                   Icons.analytics_rounded,
                   Icons.analytics_outlined,
                   TranslationHelper.translateReactive(context, 'tab_dashboard'),
@@ -243,7 +250,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               decoration: BoxDecoration(
                 color: isSelected
                     ? AppTheme.accent.withOpacity(0.10)
@@ -262,7 +269,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
               child: Icon(
                 isSelected ? activeIcon : inactiveIcon,
                 color: iconColor,
-                size: 22,
+                size: 20,
               ),
             ),
             const SizedBox(height: 3),
@@ -274,9 +281,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                 fontWeight:
                     isSelected ? FontWeight.bold : FontWeight.normal,
                 fontFamily: 'Outfit',
-                letterSpacing: 0.3,
+                letterSpacing: 0.1,
               ),
-              child: Text(label),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
