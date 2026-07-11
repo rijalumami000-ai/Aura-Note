@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/note_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/translation_helper.dart';
+import 'trash_archive_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -200,6 +201,7 @@ class DashboardScreen extends StatelessWidget {
                               activeCount.toString(),
                               Icons.description_outlined,
                               const Color(0xFF00F2FE),
+                              onTap: null,
                             ),
                           ),
                           const SizedBox(width: 14),
@@ -210,6 +212,14 @@ class DashboardScreen extends StatelessWidget {
                               archivedCount.toString(),
                               Icons.archive_outlined,
                               const Color(0xFF00FF87),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const TrashArchiveScreen(initialTab: 1),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                           const SizedBox(width: 14),
@@ -220,6 +230,14 @@ class DashboardScreen extends StatelessWidget {
                               trashedCount.toString(),
                               Icons.delete_outline_rounded,
                               Colors.redAccent,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const TrashArchiveScreen(initialTab: 0),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ],
@@ -562,40 +580,44 @@ class DashboardScreen extends StatelessWidget {
     String label,
     String count,
     IconData icon,
-    Color glowColor,
-  ) {
+    Color glowColor, {
+    VoidCallback? onTap,
+  }) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
-          decoration: AppTheme.glassDecoration(
-            auraColor: glowColor,
-            showGlow: false,
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: glowColor, size: 20),
-              const SizedBox(height: 8),
-              Text(
-                count,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+            decoration: AppTheme.glassDecoration(
+              auraColor: glowColor,
+              showGlow: false,
+            ),
+            child: Column(
+              children: [
+                Icon(icon, color: glowColor, size: 20),
+                const SizedBox(height: 8),
+                Text(
+                  count,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: AppTheme.textSecondary,
-                  fontWeight: FontWeight.w500,
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -875,14 +897,28 @@ class DashboardScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 24),
                       InkWell(
-                        onTap: () {
+                        onTap: () async {
                           setModalState(() {
                             isConnecting = true;
                           });
-                          Timer(const Duration(milliseconds: 1200), () {
-                            provider.signInGoogle('alex.cosmic@gmail.com');
-                            if (context.mounted) Navigator.pop(context);
-                          });
+                          final success = await provider.signInGoogle();
+                          if (context.mounted) {
+                            setModalState(() {
+                              isConnecting = false;
+                            });
+                            if (success) {
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                content: Text('Berhasil terhubung ke akun Google!'),
+                                behavior: SnackBarBehavior.floating,
+                              ));
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                content: Text('Gagal menghubungkan Google Sign-In. Pastikan konfigurasi Google Cloud Console / google-services.json sudah disetup.'),
+                                behavior: SnackBarBehavior.floating,
+                              ));
+                            }
+                          }
                         },
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -954,24 +990,39 @@ class DashboardScreen extends StatelessWidget {
                         children: [
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: () {
+                              onPressed: () async {
                                 setModalState(() {
                                   isSyncing = true;
-                                  progressVal = 0.0;
+                                  progressVal = 0.1;
                                   statusText = TranslationHelper.translate(context, 'sync_uploading');
                                 });
-                                // Simulate sync progress
-                                Timer.periodic(const Duration(milliseconds: 300), (timer) {
-                                  if (progressVal >= 1.0) {
-                                    timer.cancel();
-                                    provider.performSync();
-                                    if (context.mounted) Navigator.pop(context);
-                                  } else {
-                                    setModalState(() {
-                                      progressVal += 0.25;
-                                    });
-                                  }
+
+                                // Start a gentle progress simulation while actual upload is running
+                                final progressTimer = Timer.periodic(const Duration(milliseconds: 200), (t) {
+                                  setModalState(() {
+                                    if (progressVal < 0.9) {
+                                      progressVal += 0.05;
+                                    }
+                                  });
                                 });
+
+                                final success = await provider.performSync();
+
+                                progressTimer.cancel();
+                                setModalState(() {
+                                  progressVal = 1.0;
+                                });
+
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                    content: Text(success 
+                                        ? 'Sinkronisasi cloud berhasil!' 
+                                        : 'Sinkronisasi gagal. Hubungkan kembali akun Google Anda atau periksa koneksi internet.'),
+                                    behavior: SnackBarBehavior.floating,
+                                    backgroundColor: success ? Colors.green : Colors.redAccent,
+                                  ));
+                                }
                               },
                               icon: const Icon(Icons.sync, size: 16),
                               label: Text(TranslationHelper.translate(context, 'sync_now')),

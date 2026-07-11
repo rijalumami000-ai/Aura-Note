@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/note.dart';
 import '../utils/crypt_helper.dart';
+import '../services/google_drive_service.dart';
 
 class NoteProvider extends ChangeNotifier {
+  final GoogleDriveService _googleDriveService = GoogleDriveService();
   List<Note> _notes = [];
   bool _isLoading = true;
   String _searchQuery = '';
@@ -123,22 +125,33 @@ class NoteProvider extends ChangeNotifier {
   }
 
   // Google Sync Methods
-  Future<void> signInGoogle(String email) async {
-    _googleEmail = email;
-    _isSyncEnabled = true;
-    _lastSyncTime = DateTime.now().toIso8601String();
-    notifyListeners();
+  Future<bool> signInGoogle() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auranote_google_email', email);
-      await prefs.setBool('auranote_is_sync_enabled', true);
-      await prefs.setString('auranote_last_sync_time', _lastSyncTime!);
+      final account = await _googleDriveService.signIn();
+      if (account != null) {
+        _googleEmail = account.email;
+        _isSyncEnabled = true;
+        _lastSyncTime = DateTime.now().toIso8601String();
+        notifyListeners();
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('auranote_google_email', account.email);
+        await prefs.setBool('auranote_is_sync_enabled', true);
+        await prefs.setString('auranote_last_sync_time', _lastSyncTime!);
+        return true;
+      }
     } catch (e) {
-      debugPrint('Error saving google sign in: $e');
+      debugPrint('Error signing in Google: $e');
     }
+    return false;
   }
 
   Future<void> signOutGoogle() async {
+    try {
+      await _googleDriveService.signOut();
+    } catch (e) {
+      debugPrint('Error signing out Google Drive service: $e');
+    }
     _googleEmail = null;
     _isSyncEnabled = false;
     _lastSyncTime = null;
@@ -153,15 +166,54 @@ class NoteProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> performSync() async {
-    _lastSyncTime = DateTime.now().toIso8601String();
-    notifyListeners();
+  Future<bool> performSync() async {
+    if (!_isSyncEnabled) return false;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auranote_last_sync_time', _lastSyncTime!);
+      // 1. Download notes from cloud if they exist
+      final cloudNotes = await _googleDriveService.downloadNotes();
+      
+      if (cloudNotes != null) {
+        // Two-way merge logic
+        final Map<String, Note> mergedNotes = {};
+        
+        // Put all local notes in the map
+        for (var note in _notes) {
+          mergedNotes[note.id] = note;
+        }
+
+        // Merge cloud notes
+        for (var cloudNote in cloudNotes) {
+          if (mergedNotes.containsKey(cloudNote.id)) {
+            final localNote = mergedNotes[cloudNote.id]!;
+            // Keep the one with the newer dateModified
+            if (cloudNote.dateModified.isAfter(localNote.dateModified)) {
+              mergedNotes[cloudNote.id] = cloudNote;
+            }
+          } else {
+            // New note from cloud
+            mergedNotes[cloudNote.id] = cloudNote;
+          }
+        }
+
+        _notes = mergedNotes.values.toList();
+      }
+
+      // 2. Upload the final merged list back to cloud
+      final success = await _googleDriveService.uploadNotes(_notes);
+
+      if (success) {
+        _lastSyncTime = DateTime.now().toIso8601String();
+        notifyListeners();
+        await saveNotesToStorage();
+        
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('auranote_last_sync_time', _lastSyncTime!);
+        return true;
+      }
     } catch (e) {
-      debugPrint('Error saving google sync time: $e');
+      debugPrint('Error performing sync: $e');
     }
+    return false;
   }
 
   // E2EE Crypt Methods

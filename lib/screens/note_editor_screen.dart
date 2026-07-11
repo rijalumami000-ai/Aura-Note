@@ -1,8 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/note.dart';
 import '../providers/note_provider.dart';
 import '../theme/app_theme.dart';
@@ -609,6 +614,72 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 Navigator.pop(context);
               },
             ),
+            // Popup Menu Button for Extra Actions
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: AppTheme.textPrimary),
+              onSelected: (value) {
+                if (value == 'delete') {
+                  // Move to trash
+                  final provider = context.read<NoteProvider>();
+                  provider.moveToTrash(_id);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Catatan dipindahkan ke sampah', style: TextStyle(fontFamily: 'Outfit')),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  Navigator.pop(context); // Go back to Home
+                } else if (value == 'lock') {
+                  _toggleLockWithBiometrics();
+                } else if (value == 'archive') {
+                  setState(() {
+                    _isArchived = !_isArchived;
+                    if (_isArchived) _isPinned = false;
+                  });
+                  _saveNote();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_isArchived ? 'Catatan diarsipkan' : 'Catatan dipulihkan dari arsip', style: const TextStyle(fontFamily: 'Outfit')),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  Navigator.pop(context);
+                }
+              },
+              itemBuilder: (ctx) => [
+                PopupMenuItem(
+                  value: 'archive',
+                  child: Row(
+                    children: [
+                      Icon(_isArchived ? Icons.unarchive : Icons.archive, color: AppTheme.textPrimary, size: 20),
+                      const SizedBox(width: 8),
+                      Text(_isArchived ? 'Buka Arsip' : 'Arsipkan'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'lock',
+                  child: Row(
+                    children: [
+                      Icon(_isLocked ? Icons.lock_open : Icons.lock, color: AppTheme.textPrimary, size: 20),
+                      const SizedBox(width: 8),
+                      Text(_isLocked ? 'Buka Kunci' : 'Kunci Catatan'),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                      const SizedBox(width: 8),
+                      Text('Hapus', style: TextStyle(color: Colors.redAccent)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
             // Confirm/Check button (Manual Save/Done)
             IconButton(
               icon: const Icon(Icons.check, color: Colors.greenAccent),
@@ -618,7 +689,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
               },
             ),
           ],
-        ),
         body: Column(
           children: [
             // Category Select Slider
@@ -1788,7 +1858,7 @@ class AuraAISummaryCard extends StatelessWidget {
   }
 }
 
-// AuraVoice Bottom Sheet with dynamic wave visualizer and speech transcriber simulator
+// AuraVoice Bottom Sheet with real microphone input and speech to text transcription
 class AuraVoiceBottomSheet extends StatefulWidget {
   final String category;
   final Function(String) onTextTranscribed;
@@ -1805,98 +1875,106 @@ class AuraVoiceBottomSheet extends StatefulWidget {
 
 class _AuraVoiceBottomSheetState extends State<AuraVoiceBottomSheet> with SingleTickerProviderStateMixin {
   late AnimationController _waveController;
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isSpeechInitialized = false;
   bool _isRecording = false;
   bool _isFinished = false;
-  int _seconds = 0;
-  Timer? _secondsTimer;
-  Timer? _transcriptionTimer;
-
   String _transcriptionText = '';
-  String _targetText = '';
-  int _charIndex = 0;
-  String _selectedTemplate = '💼 Rapat Kerja';
-
-  // Preset Speech Profiles for Simulator
-  final Map<String, String> _speechTemplates = {
-    '💼 Rapat Kerja': 'Rapat koordinasi mingguan berjalan sangat produktif. Fokus pengembangan prioritas minggu ini adalah integrasi fitur Speech-to-Text pintar dan sinkronisasi basis data lokal pada perangkat.',
-    '💡 Ide Kreatif': 'Ide hari ini adalah menambahkan efek bersinar neon pada setiap kartu catatan kustom. Desain kartu harus semi-transparan menggunakan tekstur kaca dan responsif saat disentuh.',
-    '🍕 Agenda Pribadi': 'Rencana belanja hari ini: beli biji kopi arabika roast medium, susu rendah lemak, buah pisang, roti gandum, dan beberapa sayuran segar di supermarket terdekat.',
-  };
+  double _currentSoundLevel = 0.0;
+  String _statusMessage = 'Menginisialisasi mikrofon...';
 
   @override
   void initState() {
     super.initState();
     _waveController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1000),
     );
+    _initSpeech();
+  }
 
-    // Default template to match current category if possible
-    if (widget.category == 'Pekerjaan') {
-      _selectedTemplate = '💼 Rapat Kerja';
-    } else if (widget.category == 'Ide') {
-      _selectedTemplate = '💡 Ide Kreatif';
-    } else if (widget.category == 'Pribadi') {
-      _selectedTemplate = '🍕 Agenda Pribadi';
+  Future<void> _initSpeech() async {
+    try {
+      bool available = await _speech.initialize(
+        onStatus: (status) {
+          debugPrint('Speech status: $status');
+          if (status == 'done' || status == 'notListening') {
+            if (_isRecording) {
+              _stopRecording();
+            }
+          }
+        },
+        onError: (errorNotification) {
+          debugPrint('Speech error: $errorNotification');
+          setState(() {
+            _statusMessage = 'Error: ${errorNotification.errorMsg}';
+            _isRecording = false;
+          });
+          _waveController.stop();
+        },
+      );
+      setState(() {
+        _isSpeechInitialized = available;
+        _statusMessage = available ? 'Siap Merekam' : 'Speech recognition tidak didukung di perangkat ini';
+      });
+    } catch (e) {
+      setState(() {
+        _isSpeechInitialized = false;
+        _statusMessage = 'Gagal menginisialisasi Speech: $e';
+      });
     }
   }
 
   @override
   void dispose() {
-    _secondsTimer?.cancel();
-    _transcriptionTimer?.cancel();
+    _speech.stop();
     _waveController.dispose();
     super.dispose();
   }
 
-  void _startRecording() {
-    setState(() {
-      _isRecording = true;
-      _isFinished = false;
-      _seconds = 0;
-      _transcriptionText = '';
-      _charIndex = 0;
-      _targetText = _speechTemplates[_selectedTemplate] ?? '';
-    });
+  void _startRecording() async {
+    if (!_isSpeechInitialized) {
+      await _initSpeech();
+    }
 
-    _waveController.repeat();
-
-    // Start timer for recording duration
-    _secondsTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    if (_isSpeechInitialized && !_isRecording) {
       setState(() {
-        _seconds++;
+        _isRecording = true;
+        _isFinished = false;
+        _transcriptionText = '';
+        _currentSoundLevel = 0.0;
+        _statusMessage = 'Mendengarkan...';
       });
-    });
+      _waveController.repeat();
 
-    // Start typing simulation for real-time transcription effect
-    _transcriptionTimer = Timer.periodic(const Duration(milliseconds: 65), (timer) {
-      if (_charIndex < _targetText.length) {
-        setState(() {
-          final chunkLength = math.min(3, _targetText.length - _charIndex);
-          _transcriptionText += _targetText.substring(_charIndex, _charIndex + chunkLength);
-          _charIndex += chunkLength;
-        });
-      } else {
-        _stopRecording();
-      }
-    });
+      await _speech.listen(
+        onResult: (SpeechRecognitionResult result) {
+          setState(() {
+            _transcriptionText = result.recognizedWords;
+            if (result.finalResult) {
+              _statusMessage = 'Merekam Selesai';
+            }
+          });
+        },
+        soundLevelListener: (level) {
+          setState(() {
+            _currentSoundLevel = level;
+          });
+        },
+      );
+    }
   }
 
-  void _stopRecording() {
-    _secondsTimer?.cancel();
-    _transcriptionTimer?.cancel();
-    _waveController.stop();
-
-    setState(() {
-      _isRecording = false;
-      _isFinished = true;
-    });
-  }
-
-  String _formatDuration(int totalSeconds) {
-    final minutes = totalSeconds ~/ 60;
-    final seconds = totalSeconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  void _stopRecording() async {
+    if (_isRecording) {
+      await _speech.stop();
+      _waveController.stop();
+      setState(() {
+        _isRecording = false;
+        _isFinished = true;
+        _statusMessage = 'Rekaman Selesai';
+      });
+    }
   }
 
   @override
@@ -1937,7 +2015,7 @@ class _AuraVoiceBottomSheetState extends State<AuraVoiceBottomSheet> with Single
                 Icon(Icons.mic, color: AppTheme.accent, size: 20),
                 SizedBox(width: 8),
                 Text(
-                  'AuraVoice Asisten Suara',
+                  'AuraVoice Asisten Suara (Native)',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -1949,49 +2027,7 @@ class _AuraVoiceBottomSheetState extends State<AuraVoiceBottomSheet> with Single
             ),
             const SizedBox(height: 20),
 
-            if (!_isRecording && !_isFinished) ...[
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Pilih Profil Suara Simulasi:',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: _speechTemplates.keys.map((templateName) {
-                  final isSelected = _selectedTemplate == templateName;
-                  return ChoiceChip(
-                    label: Text(
-                      templateName,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isSelected ? Colors.black : AppTheme.textSecondary,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                    selected: isSelected,
-                    selectedColor: auraColor,
-                    backgroundColor: AppTheme.surface.withOpacity(0.4),
-                    side: BorderSide(
-                      color: isSelected ? auraColor : Colors.white.withOpacity(0.08),
-                    ),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    showCheckmark: false,
-                    onSelected: (selected) {
-                      if (selected) {
-                        setState(() {
-                          _selectedTemplate = templateName;
-                        });
-                      }
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 24),
-            ],
-
+            // Sound level dynamic visualizer
             Container(
               height: 100,
               width: double.infinity,
@@ -2005,10 +2041,12 @@ class _AuraVoiceBottomSheetState extends State<AuraVoiceBottomSheet> with Single
                 child: AnimatedBuilder(
                   animation: _waveController,
                   builder: (context, child) {
+                    // level ranges from -2 to ~10dB, normalize it
+                    final double amp = _isRecording ? (1.0 + (_currentSoundLevel + 2.0) / 6.0) : 0.08;
                     return CustomPaint(
                       painter: VoiceWavePainter(
                         phase: _waveController.value * 2 * math.pi * 2,
-                        amplitudeScale: _isRecording ? 1.0 : 0.08,
+                        amplitudeScale: amp.clamp(0.05, 3.0),
                         waveColor: auraColor,
                       ),
                     );
@@ -2031,11 +2069,7 @@ class _AuraVoiceBottomSheetState extends State<AuraVoiceBottomSheet> with Single
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  _isRecording
-                      ? 'Merekam... ${_formatDuration(_seconds)}'
-                      : _isFinished
-                          ? 'Rekaman Selesai (${_formatDuration(_seconds)})'
-                          : 'Siap Merekam',
+                  _statusMessage,
                   style: const TextStyle(fontSize: 13, color: Colors.white, fontFamily: 'Outfit'),
                 ),
               ],
@@ -2075,9 +2109,9 @@ class _AuraVoiceBottomSheetState extends State<AuraVoiceBottomSheet> with Single
               children: [
                 if (!_isRecording && !_isFinished)
                   ElevatedButton.icon(
-                    onPressed: _startRecording,
+                    onPressed: _isSpeechInitialized ? _startRecording : null,
                     icon: const Icon(Icons.play_arrow, color: Colors.white),
-                    label: const Text('Mulai Rekam', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    label: const Text('Mulai Bicara', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: auraColor,
                       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
@@ -2101,9 +2135,10 @@ class _AuraVoiceBottomSheetState extends State<AuraVoiceBottomSheet> with Single
                       setState(() {
                         _isFinished = false;
                         _transcriptionText = '';
+                        _statusMessage = 'Siap Merekam';
                       });
                     },
-                    child: const Text('Rekam Ulang', style: TextStyle(color: AppTheme.textSecondary)),
+                    child: const Text('Bicara Ulang', style: TextStyle(color: AppTheme.textSecondary)),
                   ),
                   const SizedBox(width: 20),
                   ElevatedButton.icon(
@@ -2204,7 +2239,7 @@ class VoiceWavePainter extends CustomPainter {
   }
 }
 
-// AuraScan Bottom Sheet simulating interactive mobile camera scanning and OCR extraction
+// AuraScan Bottom Sheet utilizing real Camera and Google ML Kit Text Recognition
 class AuraScanBottomSheet extends StatefulWidget {
   final String category;
   final Function(String) onTextScanned;
@@ -2221,19 +2256,13 @@ class AuraScanBottomSheet extends StatefulWidget {
 
 class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTickerProviderStateMixin {
   late AnimationController _scanController;
-  bool _isFlashing = false;
+  final ImagePicker _picker = ImagePicker();
+  File? _scannedImageFile;
   bool _isScanning = false;
   bool _isProcessing = false;
   bool _isFinished = false;
   String _scannedText = '';
-  String _selectedDocType = '🧾 Kuitansi';
-
-  // Preset OCR Text templates for simulation
-  final Map<String, String> _ocrTemplates = {
-    '🧾 Kuitansi': '=== SUPERMARKET AURAMART ===\nTanggal: 12-07-2026 10:14\n1. Kopi Arabika Medium    Rp  85.000\n2. Susu Rendah Lemak      Rp  24.500\n3. Roti Gandum            Rp  18.000\n------------------------------------\nTOTAL                     Rp 127.500\nMetode: E-Wallet\nStatus: BERHASIL - Terima kasih!',
-    '📄 Catatan Buku': 'BAB II: FILOSOFI DESAIN MODERN\nDesain premium bukan sekadar tentang penampilan, melainkan bagaimana elemen visual berinteraksi secara mulus dengan indra pengguna. Glassmorphism mengaburkan batas antara latar belakang dan permukaan, menciptakan ilusi kedalaman ruang digital yang tak terbatas.',
-    '💼 Proposal': 'PROPOSAL PENGEMBANGAN FITUR MOBILE\nPengembangan sistem pencatatan cerdas difokuskan pada tiga pilar utama:\n1. Kecepatan akses input (Quick Capture)\n2. Asisten cerdas terintegrasi (AI Engine)\n3. Desain imersif ramah pengguna (UI/UX)\nEstimasi waktu rilis: Akhir Kuartal III.',
-  };
+  String _statusMessage = 'Ambil foto dokumen Anda untuk memindai teks';
 
   @override
   void initState() {
@@ -2242,15 +2271,6 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
       vsync: this,
       duration: const Duration(milliseconds: 1600),
     );
-
-    // Pick matching document type based on category
-    if (widget.category == 'Keuangan') {
-      _selectedDocType = '🧾 Kuitansi';
-    } else if (widget.category == 'Pekerjaan') {
-      _selectedDocType = '💼 Proposal';
-    } else {
-      _selectedDocType = '📄 Catatan Buku';
-    }
   }
 
   @override
@@ -2259,34 +2279,57 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
     super.dispose();
   }
 
-  void _triggerCapture() async {
-    // 1. Play Shutter flash effect
-    setState(() {
-      _isFlashing = true;
-    });
+  Future<void> _captureAndScan(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 85,
+      );
 
-    await Future.delayed(const Duration(milliseconds: 150));
-    setState(() {
-      _isFlashing = false;
-      _isScanning = true;
-    });
+      if (image == null) return;
 
-    // 2. Start Scan laser sweep
-    _scanController.forward(from: 0.0);
+      setState(() {
+        _scannedImageFile = File(image.path);
+        _isScanning = true;
+        _isFinished = false;
+        _statusMessage = 'Memindai dokumen...';
+      });
 
-    await Future.delayed(const Duration(milliseconds: 1700));
-    setState(() {
-      _isScanning = false;
-      _isProcessing = true;
-    });
+      // Animating the scan bar
+      _scanController.repeat();
+      await Future.delayed(const Duration(milliseconds: 1500));
+      _scanController.stop();
 
-    // 3. Simulated OCR Processing
-    await Future.delayed(const Duration(milliseconds: 1400));
-    setState(() {
-      _isProcessing = false;
-      _isFinished = true;
-      _scannedText = _ocrTemplates[_selectedDocType] ?? '';
-    });
+      setState(() {
+        _isScanning = false;
+        _isProcessing = true;
+        _statusMessage = 'Mengekstrak teks dengan Aura AI Engine...';
+      });
+
+      final inputImage = InputImage.fromFilePath(image.path);
+      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+      await textRecognizer.close();
+
+      setState(() {
+        _scannedText = recognizedText.text.trim();
+        _isProcessing = false;
+        _isFinished = true;
+        _statusMessage = _scannedText.isEmpty 
+            ? 'Tidak ada teks terdeteksi di dokumen.' 
+            : 'Pemindaian selesai!';
+      });
+    } catch (e) {
+      setState(() {
+        _isScanning = false;
+        _isProcessing = false;
+        _isFinished = true;
+        _scannedText = 'Gagal memproses gambar: $e';
+        _statusMessage = 'Gagal memindai.';
+      });
+    }
   }
 
   @override
@@ -2329,7 +2372,7 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
                 Icon(Icons.camera_alt, color: AppTheme.accent, size: 20),
                 SizedBox(width: 8),
                 Text(
-                  'AuraScan Pemindai Dokumen',
+                  'AuraScan Pemindai Dokumen (OCR)',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -2339,53 +2382,21 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
 
-            // Document selector (if not scanning/finished)
-            if (!_isScanning && !_isProcessing && !_isFinished) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: _ocrTemplates.keys.map((docType) {
-                  final isSelected = _selectedDocType == docType;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: ChoiceChip(
-                      label: Text(
-                        docType,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isSelected ? Colors.black : AppTheme.textSecondary,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
-                      ),
-                      selected: isSelected,
-                      selectedColor: auraColor,
-                      backgroundColor: AppTheme.surface.withOpacity(0.4),
-                      side: BorderSide(
-                        color: isSelected ? auraColor : Colors.white.withOpacity(0.08),
-                      ),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      showCheckmark: false,
-                      onSelected: (selected) {
-                        if (selected) {
-                          setState(() {
-                            _selectedDocType = docType;
-                          });
-                        }
-                      },
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 12),
-            ],
+            Text(
+              _statusMessage,
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary.withOpacity(0.8), fontFamily: 'Outfit'),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
 
             // Main camera view / OCR text preview box
             Expanded(
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(_isFinished ? 0.2 : 0.6),
+                  color: Colors.black.withOpacity(_isFinished ? 0.25 : 0.6),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: _isFinished ? Colors.white.withOpacity(0.08) : auraColor.withOpacity(0.3),
@@ -2397,8 +2408,20 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
+                      // Show Image Preview when picked
+                      if (_scannedImageFile != null)
+                        Positioned.fill(
+                          child: Opacity(
+                            opacity: _isFinished ? 0.2 : 0.8,
+                            child: Image.file(
+                              _scannedImageFile!,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+
                       // Viewfinder Grid/Laser sweep (when scanning)
-                      if (!_isFinished && !_isProcessing)
+                      if (_isScanning)
                         Positioned.fill(
                           child: AnimatedBuilder(
                             animation: _scanController,
@@ -2408,35 +2431,27 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
                                   scanProgress: _scanController.value,
                                   isScanning: _isScanning,
                                   scanColor: auraColor,
-                                ),
-                              );
+                                );
+                              };
                             },
                           ),
                         ),
 
-                      // Document picture background simulation (shutter preview)
-                      if (!_isFinished && !_isScanning && !_isProcessing)
+                      // Default UI before picking
+                      if (_scannedImageFile == null)
                         Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(Icons.document_scanner, size: 64, color: auraColor.withOpacity(0.25)),
                             const SizedBox(height: 12),
                             Text(
-                              'Posisikan dokumen Anda di dalam bingkai',
+                              'Posisikan dokumen Anda di depan kamera',
                               style: TextStyle(fontSize: 12, color: AppTheme.textSecondary.withOpacity(0.6), fontFamily: 'Outfit'),
                             ),
                           ],
                         ),
 
-                      // Camera shutter flash overlay
-                      if (_isFlashing)
-                        Positioned.fill(
-                          child: Container(
-                            color: Colors.white,
-                          ),
-                        ),
-
-                      // Processing Spinner (ML Kit extraction simulation)
+                      // Processing Spinner (ML Kit extraction)
                       if (_isProcessing)
                         Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -2465,11 +2480,20 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
                               children: [
                                 Row(
                                   children: [
-                                    const Icon(Icons.check_circle_outline, color: Colors.greenAccent, size: 16),
+                                    Icon(
+                                      _scannedText.isEmpty ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+                                      color: _scannedText.isEmpty ? Colors.amberAccent : Colors.greenAccent,
+                                      size: 16,
+                                    ),
                                     const SizedBox(width: 8),
                                     Text(
-                                      'Hasil Deteksi OCR ($_selectedDocType)',
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.greenAccent, fontFamily: 'Outfit'),
+                                      _scannedText.isEmpty ? 'Gagal Deteksi OCR' : 'Hasil Deteksi OCR',
+                                      style: TextStyle(
+                                        fontSize: 12, 
+                                        fontWeight: FontWeight.bold, 
+                                        color: _scannedText.isEmpty ? Colors.amberAccent : Colors.greenAccent, 
+                                        fontFamily: 'Outfit',
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -2486,7 +2510,9 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
                                     child: SingleChildScrollView(
                                       physics: const BouncingScrollPhysics(),
                                       child: Text(
-                                        _scannedText,
+                                        _scannedText.isEmpty 
+                                            ? 'Tidak ada teks yang dapat dibaca pada gambar. Pastikan dokumen cukup terang dan teks terbaca jelas.' 
+                                            : _scannedText,
                                         style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, fontFamily: 'Outfit', height: 1.4),
                                       ),
                                     ),
@@ -2507,32 +2533,32 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (!_isScanning && !_isProcessing && !_isFinished)
-                  GestureDetector(
-                    onTap: _triggerCapture,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3.0),
-                      ),
-                      child: Container(
-                        width: 58,
-                        height: 58,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: auraColor,
-                          boxShadow: [
-                            BoxShadow(
-                              color: auraColor.withOpacity(0.4),
-                              blurRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(Icons.camera_alt, color: Colors.white, size: 28),
-                      ),
+                if (!_isScanning && !_isProcessing && !_isFinished) ...[
+                  // Gallery Button
+                  ElevatedButton.icon(
+                    onPressed: () => _captureAndScan(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library, color: Colors.white, size: 18),
+                    label: const Text('Galeri', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.surface.withOpacity(0.4),
+                      side: BorderSide(color: Colors.white.withOpacity(0.08)),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
                   ),
+                  const SizedBox(width: 16),
+                  // Camera Button
+                  ElevatedButton.icon(
+                    onPressed: () => _captureAndScan(ImageSource.camera),
+                    icon: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                    label: const Text('Kamera', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: auraColor,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ],
                 if (_isScanning)
                   ElevatedButton.icon(
                     onPressed: () {
@@ -2555,24 +2581,28 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
                       setState(() {
                         _isFinished = false;
                         _scannedText = '';
+                        _scannedImageFile = null;
+                        _statusMessage = 'Ambil foto dokumen Anda untuk memindai teks';
                       });
                     },
                     child: const Text('Pindai Ulang', style: TextStyle(color: AppTheme.textSecondary)),
                   ),
-                  const SizedBox(width: 24),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      widget.onTextScanned(_scannedText);
-                      Navigator.pop(context);
-                    },
-                    icon: const Icon(Icons.check, color: Colors.white),
-                    label: const Text('Sematkan Teks', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  if (_scannedText.isNotEmpty) ...[
+                    const SizedBox(width: 24),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        widget.onTextScanned(_scannedText);
+                        Navigator.pop(context);
+                      },
+                      icon: const Icon(Icons.check, color: Colors.white),
+                      label: const Text('Sematkan Teks', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ],
             ),

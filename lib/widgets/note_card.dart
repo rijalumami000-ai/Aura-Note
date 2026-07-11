@@ -37,6 +37,7 @@ class NoteCard extends StatelessWidget {
           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
           child: InkWell(
             onTap: onTap,
+            onLongPress: () => _showActionMenu(context, note),
             borderRadius: BorderRadius.circular(20),
             child: Stack(
               children: [
@@ -352,5 +353,140 @@ class NoteCard extends StatelessWidget {
       ];
       return '${dateTime.day} ${months[dateTime.month - 1]}, $timeStr';
     }
+  }
+
+  void _showActionMenu(BuildContext context, Note note) {
+    final provider = Provider.of<NoteProvider>(context, listen: false);
+    final isEn = provider.languageCode == 'en';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          decoration: BoxDecoration(
+            color: AppTheme.surface.withOpacity(0.95),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.textSecondary.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Pin / Unpin
+              _buildActionTile(
+                icon: note.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                label: note.isPinned
+                    ? (isEn ? 'Unpin' : 'Lepas Sematan')
+                    : (isEn ? 'Pin' : 'Sematkan'),
+                color: const Color(0xFFFFD700),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  provider.togglePin(note.id);
+                },
+              ),
+              // Archive / Unarchive
+              _buildActionTile(
+                icon: note.isArchived ? Icons.unarchive_rounded : Icons.archive_outlined,
+                label: note.isArchived
+                    ? (isEn ? 'Unarchive' : 'Buka Arsip')
+                    : (isEn ? 'Archive' : 'Arsipkan'),
+                color: const Color(0xFF00AAFF),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  provider.toggleArchive(note.id);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(note.isArchived
+                        ? (isEn ? 'Note unarchived' : 'Catatan dibuka dari arsip')
+                        : (isEn ? 'Note archived' : 'Catatan diarsipkan')),
+                    behavior: SnackBarBehavior.floating,
+                    backgroundColor: AppTheme.surface,
+                  ));
+                },
+              ),
+              // Lock / Unlock
+              _buildActionTile(
+                icon: note.isLocked ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+                label: note.isLocked
+                    ? (isEn ? 'Unlock' : 'Buka Kunci')
+                    : (isEn ? 'Lock' : 'Kunci'),
+                color: const Color(0xFFFF6B35),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  provider.toggleNoteLock(note.id);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(note.isLocked
+                        ? (isEn ? 'Note unlocked' : 'Catatan dibuka kuncinya')
+                        : (isEn ? 'Note locked' : 'Catatan dikunci')),
+                    behavior: SnackBarBehavior.floating,
+                    backgroundColor: AppTheme.surface,
+                  ));
+                },
+              ),
+              const Divider(color: Colors.white10, indent: 20, endIndent: 20),
+              // Move to Trash
+              _buildActionTile(
+                icon: Icons.delete_outline_rounded,
+                label: isEn ? 'Move to Trash' : 'Pindahkan ke Sampah',
+                color: Colors.redAccent,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  provider.moveToTrash(note.id);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(isEn ? 'Note moved to trash' : 'Catatan dipindahkan ke sampah'),
+                    behavior: SnackBarBehavior.floating,
+                    backgroundColor: AppTheme.surface,
+                    action: SnackBarAction(
+                      label: isEn ? 'Undo' : 'Batalkan',
+                      textColor: AppTheme.accent,
+                      onPressed: () => provider.restoreFromTrash(note.id),
+                    ),
+                  ));
+                },
+              ),
+              SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildActionTile({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: color, size: 20),
+      ),
+      title: Text(
+        label,
+        style: TextStyle(
+          color: color == Colors.redAccent ? Colors.redAccent : AppTheme.textPrimary,
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+      ),
+      onTap: onTap,
+      dense: true,
+    );
   }
 }

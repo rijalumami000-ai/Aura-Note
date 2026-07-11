@@ -66,5 +66,15 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>AuraNote memerlukan akses mikrofon untuk fitur AuraVoice (transkripsi suara ke teks)</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>AuraNote memerlukan pengenalan ucapan untuk mentranskripsi suara Anda menjadi teks catatan</string>
+	<key>NSCameraUsageDescription</key>
+	<string>AuraNote memerlukan akses kamera untuk fitur AuraScan (pemindaian dokumen OCR)</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>AuraNote memerlukan akses galeri foto untuk memindai gambar dokumen dengan AuraScan</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>AuraNote menggunakan Face ID untuk mengamankan catatan yang terkunci dengan AuraLock</string>
 </dict>
 </plist>

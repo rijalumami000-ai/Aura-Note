@@ -37,6 +37,15 @@ dependencies:
   provider: ^6.1.5+1
   google_fonts: ^8.1.0
   shared_preferences: ^2.5.5
+  speech_to_text: ^7.0.0
+  google_mlkit_text_recognition: ^0.14.0
+  image_picker: ^1.1.2
+  google_sign_in: ^6.2.2
+  googleapis: ^14.0.0
+  googleapis_auth: ^2.0.0
+  http: ^1.4.0
+  local_auth: ^2.3.0
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

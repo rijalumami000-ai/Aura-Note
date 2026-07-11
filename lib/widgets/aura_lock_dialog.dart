@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:local_auth/local_auth.dart';
 import '../theme/app_theme.dart';
 
 class AuraLockDialog extends StatefulWidget {
@@ -19,6 +20,7 @@ class AuraLockDialog extends StatefulWidget {
 
 class _AuraLockDialogState extends State<AuraLockDialog> with SingleTickerProviderStateMixin {
   late AnimationController _scannerController;
+  final LocalAuthentication _auth = LocalAuthentication();
   bool _isScanning = false;
   bool _isSuccess = false;
   String _statusText = 'Sentuh sensor sidik jari';
@@ -32,6 +34,10 @@ class _AuraLockDialogState extends State<AuraLockDialog> with SingleTickerProvid
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
+    // Automatically trigger native biometric authentication on dialog open
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _authenticateWithBiometrics();
+    });
   }
 
   @override
@@ -41,12 +47,58 @@ class _AuraLockDialogState extends State<AuraLockDialog> with SingleTickerProvid
     super.dispose();
   }
 
-  void _startVerification() {
+  Future<void> _authenticateWithBiometrics() async {
+    try {
+      final bool canAuthenticateWithBiometrics = await _auth.canCheckBiometrics;
+      final bool canAuthenticate = canAuthenticateWithBiometrics || await _auth.isDeviceSupported();
+
+      if (!canAuthenticate) {
+        setState(() {
+          _statusText = 'Biometrik tidak tersedia. Menggunakan sensor simulator.';
+        });
+        return;
+      }
+
+      setState(() {
+        _isScanning = true;
+        _statusText = 'Memverifikasi identitas Anda...';
+      });
+      _scannerController.repeat();
+
+      final bool didAuthenticate = await _auth.authenticate(
+        localizedReason: 'Gunakan biometrik untuk membuka kunci catatan AuraNote',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: false, // allows PIN/pattern fallback
+        ),
+      );
+
+      if (didAuthenticate) {
+        _verificationSuccess();
+      } else {
+        setState(() {
+          _isScanning = false;
+          _statusText = 'Autentikasi gagal / dibatalkan';
+        });
+        _scannerController.stop();
+      }
+    } catch (e) {
+      debugPrint('Error local_auth: $e');
+      setState(() {
+        _isScanning = false;
+        _statusText = 'Gagal menggunakan biometrik. Gunakan simulator.';
+      });
+      _scannerController.stop();
+    }
+  }
+
+  // Fallback simulator if native biometrics fails or is not available
+  void _startVerificationSimulator() {
     if (_isSuccess || _isScanning) return;
 
     setState(() {
       _isScanning = true;
-      _statusText = 'Membaca sidik jari...';
+      _statusText = 'Membaca sidik jari (Simulasi)...';
       _progress = 0.0;
     });
     _scannerController.repeat();
@@ -129,7 +181,12 @@ class _AuraLockDialogState extends State<AuraLockDialog> with SingleTickerProvid
               const SizedBox(height: 32),
 
               GestureDetector(
-                onTapDown: (_) => _startVerification(),
+                onTap: () {
+                  if (!_isScanning && !_isSuccess) {
+                    _authenticateWithBiometrics();
+                  }
+                },
+                onLongPress: _startVerificationSimulator,
                 child: Container(
                   width: 120,
                   height: 120,
@@ -152,7 +209,7 @@ class _AuraLockDialogState extends State<AuraLockDialog> with SingleTickerProvid
                           width: 106,
                           height: 106,
                           child: CircularProgressIndicator(
-                            value: _progress,
+                            value: _verificationTimer != null ? _progress : null, // indeterminate spinner for native biometric
                             strokeWidth: 3,
                             valueColor: AlwaysStoppedAnimation<Color>(auraColor),
                           ),
@@ -215,7 +272,7 @@ class _AuraLockDialogState extends State<AuraLockDialog> with SingleTickerProvid
               const SizedBox(height: 8),
               if (!_isScanning && !_isSuccess)
                 Text(
-                  'Sentuh sidik jari untuk mulai memverifikasi',
+                  'Ketuk untuk biometrik native, tahan untuk simulator',
                   style: TextStyle(
                     fontSize: 10,
                     color: AppTheme.textSecondary,
