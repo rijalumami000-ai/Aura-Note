@@ -693,16 +693,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 ),
               ],
             ),
-            // Simpan & Tutup
-            IconButton(
-              icon: const Icon(Icons.check_rounded, color: Colors.greenAccent),
-              tooltip: 'Simpan',
-              onPressed: () {
-                _saveNote();
-                Navigator.pop(context);
-              },
-            ),
           ],
+        ),
         body: Column(
           children: [
             // Category Select Slider
@@ -1970,7 +1962,7 @@ class _AuraVoiceBottomSheetState extends State<AuraVoiceBottomSheet> with Single
             }
           });
         },
-        soundLevelListener: (level) {
+        onSoundLevelChange: (level) {
           setState(() {
             _currentSoundLevel = level;
           });
@@ -2445,8 +2437,8 @@ class _AuraScanBottomSheetState extends State<AuraScanBottomSheet> with SingleTi
                                   scanProgress: _scanController.value,
                                   isScanning: _isScanning,
                                   scanColor: auraColor,
-                                );
-                              };
+                                ),
+                              );
                             },
                           ),
                         ),
