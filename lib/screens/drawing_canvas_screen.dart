@@ -5,12 +5,14 @@ import '../providers/note_provider.dart';
 import '../theme/app_theme.dart';
 
 class DrawingCanvasScreen extends StatefulWidget {
+  final Note? note;
   final List<DrawingStroke>? initialStrokes;
   final String? category;
   final bool isStandalone;
 
   const DrawingCanvasScreen({
     super.key,
+    this.note,
     this.initialStrokes,
     this.category,
     this.isStandalone = false,
@@ -105,19 +107,26 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
 
     final provider = Provider.of<NoteProvider>(context, listen: false);
     final isEn = provider.languageCode == 'en';
-    final title = isEn ? 'AuraDraw Sketch' : 'Sketsa AuraDraw';
 
-    final newNote = Note(
-      id: 'drawing_${DateTime.now().millisecondsSinceEpoch}',
-      title: title,
-      content: isEn ? 'Freehand digital sketch.' : 'Sketsa gambar digital bebas.',
-      category: 'Drawing',
-      dateCreated: DateTime.now(),
-      dateModified: DateTime.now(),
-      sketchStrokes: _strokes,
-    );
-
-    provider.addNote(newNote);
+    if (widget.note != null) {
+      final updatedNote = widget.note!.copyWith(
+        sketchStrokes: _strokes,
+        dateModified: DateTime.now(),
+      );
+      provider.updateNote(updatedNote);
+    } else {
+      final title = isEn ? 'AuraDraw Sketch' : 'Sketsa AuraDraw';
+      final newNote = Note(
+        id: 'drawing_${DateTime.now().millisecondsSinceEpoch}',
+        title: title,
+        content: isEn ? 'Freehand digital sketch.' : 'Sketsa gambar digital bebas.',
+        category: 'Drawing',
+        dateCreated: DateTime.now(),
+        dateModified: DateTime.now(),
+        sketchStrokes: _strokes,
+      );
+      provider.addNote(newNote);
+    }
 
     ScaffoldMessenger.of(context)
       ..clearSnackBars()

@@ -6,8 +6,8 @@ import '../providers/note_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/translation_helper.dart';
 import 'trash_archive_screen.dart';
-import 'mind_map_screen.dart';
-import 'drawing_canvas_screen.dart';
+import 'mind_map_list_screen.dart';
+import 'drawing_list_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -270,7 +270,7 @@ class DashboardScreen extends StatelessWidget {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (context) => const MindMapScreen(),
+                                          builder: (context) => const MindMapListScreen(),
                                         ),
                                       );
                                     },
@@ -321,9 +321,7 @@ class DashboardScreen extends StatelessWidget {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (context) => const DrawingCanvasScreen(
-                                            isStandalone: true,
-                                          ),
+                                          builder: (context) => const DrawingListScreen(),
                                         ),
                                       );
                                     },
@@ -454,69 +452,6 @@ class DashboardScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 24),
-
-                      // Section 4: Quick Actions (Trash operations)
-                      if (trashedCount > 0) ...[
-                        Text(
-                          TranslationHelper.translateReactive(context, 'Tindakan Cepat'),
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: AppTheme.glassDecoration(auraColor: Colors.redAccent),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      TranslationHelper.translateReactive(context, 'Bakar Tempat Sampah'),
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      provider.languageCode == 'en'
-                                          ? 'Permanently delete $trashedCount notes in Trash.'
-                                          : 'Hapus permanen $trashedCount catatan di Tempat Sampah.',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: AppTheme.textSecondary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    _showConfirmClearTrash(context, provider);
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.redAccent.withOpacity(0.15),
-                                    elevation: 0,
-                                    side: const BorderSide(color: Colors.redAccent, width: 0.8),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    provider.languageCode == 'en' ? 'Empty' : 'Kosongkan',
-                                    style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
                       const SizedBox(height: 24),
 
                       // Section 5: Settings (AuraLanguage Selector)
@@ -610,15 +545,56 @@ class DashboardScreen extends StatelessWidget {
                                         ),
                                       ),
                                       const SizedBox(height: 4),
-                                      Text(
-                                        provider.isSyncEnabled 
-                                          ? '${provider.googleEmail} (${TranslationHelper.translateReactive(context, 'sync_active')})'
-                                          : TranslationHelper.translateReactive(context, 'sync_desc'),
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: AppTheme.textSecondary,
+                                      if (provider.isSyncEnabled) ...[
+                                        Row(
+                                          children: [
+                                            Container(
+                                              width: 7,
+                                              height: 7,
+                                              decoration: const BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: Color(0xFF00FF87),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Color(0xFF00FF87),
+                                                    blurRadius: 6,
+                                                    spreadRadius: 1,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Text(
+                                              'CONNECTED & SECURED',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFF00FF87),
+                                                letterSpacing: 0.5,
+                                                fontFamily: 'Outfit',
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          provider.googleEmail ?? '',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontFamily: 'Outfit',
+                                          ),
+                                        ),
+                                      ] else ...[
+                                        Text(
+                                          TranslationHelper.translateReactive(context, 'sync_desc'),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.textSecondary,
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),

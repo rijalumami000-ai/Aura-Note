@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "761386942545",
+    "project_id": "aura-note-ac2d2",
+    "storage_bucket": "aura-note-ac2d2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:761386942545:android:f95a91694370cdb98e7870",
+        "android_client_info": {
+          "package_name": "com.auranote.auranote"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCy1_VLrPecPfouRdBlRoavbOdMLmtZ5EY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

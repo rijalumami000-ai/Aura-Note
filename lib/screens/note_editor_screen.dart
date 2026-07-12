@@ -640,45 +640,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                       },
                     );
                     break;
-                  case 'mindmap':
-                    _saveNote();
-                    final note = Note(
-                      id: _id,
-                      title: _titleController.text.trim(),
-                      content: _contentController.text.trim(),
-                      category: _selectedCategory,
-                      dateCreated: widget.note?.dateCreated ?? DateTime.now(),
-                      dateModified: DateTime.now(),
-                      isPinned: _isPinned,
-                      isArchived: _isArchived,
-                      isTrashed: widget.note?.isTrashed ?? false,
-                      isLocked: _isLocked,
-                      reminderDate: _reminderDate,
-                      todos: _todos,
-                      sketchStrokes: _sketchStrokes,
-                      aiSummary: _aiSummary,
-                    );
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => MindMapScreen(note: note)),
-                    );
-                    break;
-                  case 'draw':
-                    Navigator.push<List<DrawingStroke>>(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DrawingCanvasScreen(
-                          initialStrokes: _sketchStrokes,
-                          category: _selectedCategory,
-                        ),
-                      ),
-                    ).then((result) {
-                      if (result != null) {
-                        setState(() { _sketchStrokes = result; });
-                        _saveNote();
-                      }
-                    });
-                    break;
+
                   case 'delete':
                     _showEditorConfirmDialog(
                       title: 'Hapus Catatan?',
@@ -727,23 +689,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                   ]),
                 ),
                 const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'mindmap',
-                  child: Row(children: [
-                    const Icon(Icons.hub_outlined, size: 20, color: AppTheme.accent),
-                    const SizedBox(width: 10),
-                    const Text('AuraMind (Peta Pikiran)', style: TextStyle(fontFamily: 'Outfit')),
-                  ]),
-                ),
-                PopupMenuItem(
-                  value: 'draw',
-                  child: Row(children: [
-                    Icon(Icons.brush, size: 20, color: _sketchStrokes.isNotEmpty ? auraColor : AppTheme.textPrimary),
-                    const SizedBox(width: 10),
-                    const Text('AuraDraw (Kanvas)', style: TextStyle(fontFamily: 'Outfit')),
-                  ]),
-                ),
-                const PopupMenuDivider(),
                 const PopupMenuItem(
                   value: 'delete',
                   child: Row(children: [
@@ -766,40 +711,44 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: AppTheme.categoryGradients.keys.map((cat) {
-                  final isSel = _selectedCategory == cat;
-                  final catColor = AppTheme.getColorForCategory(cat);
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(
-                        cat,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isSel ? Colors.black : AppTheme.textSecondary,
-                          fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                children: () {
+                  final provider = context.watch<NoteProvider>();
+                  final cats = provider.allCategories.where((c) => c != 'Semua').toList();
+                  return cats.map((cat) {
+                    final isSel = _selectedCategory == cat;
+                    final catColor = AppTheme.getColorForCategory(cat);
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(
+                          cat,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isSel ? Colors.black : AppTheme.textSecondary,
+                            fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                          ),
                         ),
+                        selected: isSel,
+                        selectedColor: catColor,
+                        backgroundColor: AppTheme.surface.withOpacity(0.4),
+                        side: BorderSide(
+                          color: isSel ? catColor : Colors.white.withOpacity(0.08),
+                          width: 1.0,
+                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        showCheckmark: false,
+                        onSelected: (selected) {
+                          if (selected) {
+                            setState(() {
+                              _selectedCategory = cat;
+                            });
+                            _saveNote();
+                          }
+                        },
                       ),
-                      selected: isSel,
-                      selectedColor: catColor,
-                      backgroundColor: AppTheme.surface.withOpacity(0.4),
-                      side: BorderSide(
-                        color: isSel ? catColor : Colors.white.withOpacity(0.08),
-                        width: 1.0,
-                      ),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      showCheckmark: false,
-                      onSelected: (selected) {
-                        if (selected) {
-                          setState(() {
-                            _selectedCategory = cat;
-                          });
-                          _saveNote();
-                        }
-                      },
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }).toList();
+                }(),
               ),
             ),
 

@@ -329,6 +329,11 @@ class NoteProvider extends ChangeNotifier {
         return false;
       }
 
+      // Sembunyikan MindMap dan Drawing dari list global 'Semua' agar tidak campur aduk
+      if (_selectedCategory == 'Semua' && (note.category == 'MindMap' || note.category == 'Drawing')) {
+        return false;
+      }
+
       // Filter by category
       if (_selectedCategory != 'Semua' && note.category != _selectedCategory) {
         return false;
@@ -471,83 +476,109 @@ class NoteProvider extends ChangeNotifier {
     await saveNotesToStorage();
   }
 
-  // Generate local heuristic-based summary for offline AI simulation
+  // Generate local smart summary for AuraAI simulation
   String _generateLocalSummary(Note note) {
-    if (note.content.trim().isEmpty && note.todos.isEmpty) {
-      return 'Catatan ini kosong. Tuliskan beberapa paragraf atau buat daftar tugas terlebih dahulu agar AuraAI dapat merangkumnya.';
+    final cleanContent = note.content.trim();
+    if (cleanContent.isEmpty && note.todos.isEmpty) {
+      return 'Catatan ini masih kosong. Tuliskan beberapa paragraf atau buat daftar tugas terlebih dahulu agar AuraAI dapat merangkumnya.';
     }
 
     final buffer = StringBuffer();
     
-    // Title/Focus
-    final String cleanTitle = note.title.replaceAll(RegExp(r'[^\w\s\u00C0-\u00FF]'), '').trim();
-    buffer.writeln('📌 **Fokus Utama**:');
-    if (cleanTitle.isNotEmpty) {
-      buffer.writeln('Analisis rencana mengenai "$cleanTitle".');
-    } else {
-      buffer.writeln('Ringkasan ide dari catatan tanpa judul.');
+    // 1. Deteksi Urgensi
+    final urgentKeywords = ['penting', 'secepatnya', 'urgent', 'darurat', 'harus', 'segera', 'deadline', 'batas waktu', 'prioritas', 'asap', 'cepat'];
+    bool isUrgent = false;
+    final lowerContent = cleanContent.toLowerCase();
+    final lowerTitle = note.title.toLowerCase();
+    
+    for (var kw in urgentKeywords) {
+      if (lowerContent.contains(kw) || lowerTitle.contains(kw)) {
+        isUrgent = true;
+        break;
+      }
     }
+    
+    buffer.writeln('📊 **Analisis Kategori & Urgensi AuraAI**:');
+    buffer.writeln('• status: ${isUrgent ? "🚨 Prioritas Tinggi (Urgent)" : "🟢 Normal (Rutin)"}');
+    
+    // 2. Deteksi Konteks Konten
+    String contextType = 'Umum';
+    if (RegExp(r'(resep|masak|bumbu|makan|dapur|rebus|goreng|bahan)').hasMatch(lowerContent)) {
+      contextType = '🍳 Kuliner / Resep';
+    } else if (RegExp(r'(beli|harga|bayar|toko|belanja|rupiah|ongkir|ongkos)').hasMatch(lowerContent)) {
+      contextType = '🛍️ Perbelanjaan / Keuangan';
+    } else if (RegExp(r'(sprint|meeting|rapat|klien|proyek|tugas|kerja|kantor|deadline|tabel|database)').hasMatch(lowerContent)) {
+      contextType = '💼 Pekerjaan & Proyek';
+    } else if (RegExp(r'(koding|programming|flutter|dart|code|bug|api|git|deploy)').hasMatch(lowerContent)) {
+      contextType = '💻 Pengembangan Perangkat Lunak';
+    }
+    buffer.writeln('• Konteks: $contextType');
     buffer.writeln();
 
-    // Content extraction
-    final sentences = note.content
+    // 3. Ringkasan Eksekutif Dinamis
+    buffer.writeln('📝 **Ringkasan Eksekutif**:');
+    final sentences = cleanContent
         .split(RegExp(r'(?<=[.!?])\s+'))
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .toList();
 
-    List<String> keyPoints = [];
+    if (sentences.isNotEmpty) {
+      // Buat paragraf ringkasan yang mengalir alami
+      String summarySnippet = '';
+      if (sentences.length <= 2) {
+        summarySnippet = sentences.join(' ');
+      } else {
+        // Ambil kalimat terpanjang/terpenting sebagai ringkasan inti
+        final sortedByInfo = List<String>.from(sentences)
+          ..sort((a, b) => b.length.compareTo(a.length));
+        summarySnippet = '${sortedByInfo.first} Selain itu, poin krusial lainnya adalah ${sortedByInfo[1]}';
+      }
+      buffer.writeln(summarySnippet);
+    } else if (note.todos.isNotEmpty) {
+      buffer.writeln('Catatan ini berfokus pada penyelesaian daftar tugas kerja yang berisi ${note.todos.length} item agenda.');
+    } else {
+      buffer.writeln('Belum ada paragraf konten deskriptif untuk diekstraksi.');
+    }
+    buffer.writeln();
+
+    // 4. Deteksi Poin Kunci & Action Items Cerdas (berbasis kata kerja operasional)
+    final actionVerbs = ['hubungi', 'kirim', 'selesaikan', 'beli', 'bayar', 'buat', 'perbaiki', 'rancang', 'pelajari', 'diskusikan', 'tulis', 'siapkan', 'check', 'cek'];
+    final List<String> extractedActions = [];
     
-    // Look for sentences with action/important keywords
-    final keywords = ['penting', 'harus', 'rencana', 'ide', 'tugas', 'fokus', 'jangan lupa', 'agenda', 'target', 'biaya', 'anggaran', 'sprint', 'prioritas'];
     for (var sentence in sentences) {
-      final lower = sentence.toLowerCase();
-      if (keywords.any((kw) => lower.contains(kw))) {
-        if (keyPoints.length < 3) {
-          keyPoints.add(sentence);
+      final words = sentence.toLowerCase().split(RegExp(r'\s+'));
+      if (words.isNotEmpty && actionVerbs.contains(words.first)) {
+        extractedActions.add(sentence);
+      }
+    }
+
+    // Jika tidak ada kalimat yang diawali kata kerja, cari yang mengandung kata kerja di tengah kalimat
+    if (extractedActions.isEmpty) {
+      for (var sentence in sentences) {
+        final lowerS = sentence.toLowerCase();
+        if (actionVerbs.any((verb) => lowerS.contains(' $verb '))) {
+          if (extractedActions.length < 3) {
+            extractedActions.add(sentence);
+          }
         }
       }
     }
 
-    // If we didn't find enough key sentences, take first sentence and/or longest sentences
-    if (keyPoints.length < 2 && sentences.isNotEmpty) {
-      final sortedByLength = List<String>.from(sentences)
-        ..sort((a, b) => b.length.compareTo(a.length));
-      for (var s in sortedByLength) {
-        if (!keyPoints.contains(s) && keyPoints.length < 3) {
-          keyPoints.add(s);
-        }
+    if (extractedActions.isNotEmpty || note.todos.isNotEmpty) {
+      buffer.writeln('⚡ **Saran Tindakan AuraAI**:');
+      // Tampilkan action items hasil ekstraksi teks
+      for (var action in extractedActions.take(3)) {
+        buffer.writeln('☑️ *Tindakan:* "$action"');
       }
-    }
-
-    if (keyPoints.isNotEmpty) {
-      buffer.writeln('🔑 **Poin Penting**:');
-      for (var point in keyPoints) {
-        // Strip markdown list characters if any
-        String cleanPt = point.replaceAll(RegExp(r'^[-*+]\s+'), '');
-        buffer.writeln('• $cleanPt');
-      }
-      buffer.writeln();
-    }
-
-    // Action items from Todos
-    if (note.todos.isNotEmpty) {
-      buffer.writeln('⚡ **Rencana Tindakan**:');
-      final activeTodos = note.todos.where((t) => !t.isDone).toList();
-      final doneTodos = note.todos.where((t) => t.isDone).toList();
-      
-      if (activeTodos.isNotEmpty) {
-        for (int i = 0; i < activeTodos.length && i < 3; i++) {
-          final tTitle = activeTodos[i].title.trim().isEmpty ? 'Tugas tanpa nama' : activeTodos[i].title;
-          buffer.writeln('☐ Selesaikan tugas: "$tTitle"');
-        }
-      }
-      if (doneTodos.isNotEmpty) {
-        buffer.writeln('✓ ${doneTodos.length} tugas telah berhasil diselesaikan.');
+      // Tampilkan tugas yang belum selesai dari Todo List
+      final pendingTodos = note.todos.where((t) => !t.isDone).toList();
+      for (var todo in pendingTodos.take(3)) {
+        buffer.writeln('☑️ *Agenda:* Selesaikan "${todo.title}"');
       }
     } else {
-      buffer.writeln('⚡ **Saran Tindakan**:');
-      buffer.writeln('Tindak lanjuti poin-poin di atas dan tambahkan daftar tugas (checklist) untuk melacak kemajuan pengerjaan.');
+      buffer.writeln('⚡ **Saran Tindakan AuraAI**:');
+      buffer.writeln('• Tambahkan detail langkah kerja atau buat daftar tugas (checklist) untuk mulai melacak progress rencana Anda.');
     }
 
     return buffer.toString();
