@@ -88,6 +88,74 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     super.dispose();
   }
 
+  void _showEditorConfirmDialog({
+    required String title,
+    required String content,
+    required VoidCallback onConfirm,
+    required String confirmLabel,
+    Color confirmColor = AppTheme.accent,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: AlertDialog(
+          backgroundColor: AppTheme.surface.withOpacity(0.9),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.white.withOpacity(0.08)),
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontFamily: 'Outfit',
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          content: Text(
+            content,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontFamily: 'Outfit',
+              fontSize: 13,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(
+                'Batal',
+                style: TextStyle(color: AppTheme.textSecondary, fontFamily: 'Outfit'),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                onConfirm();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: confirmColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(
+                confirmLabel,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Outfit',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Method to auto-save or manually save notes
   void _saveNote() {
     final note = Note(
@@ -545,23 +613,32 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     _toggleLockWithBiometrics();
                     break;
                   case 'archive':
-                    setState(() {
-                      _isArchived = !_isArchived;
-                      if (_isArchived) _isPinned = false;
-                    });
-                    _saveNote();
-                    ScaffoldMessenger.of(context)
-                      ..clearSnackBars()
-                      ..showSnackBar(SnackBar(
-                        content: Text(
-                          _isArchived ? 'Catatan diarsipkan' : 'Catatan dipulihkan dari arsip',
-                          style: const TextStyle(fontFamily: 'Outfit'),
-                        ),
-                        duration: const Duration(seconds: 2),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ));
-                    Navigator.pop(context);
+                    _showEditorConfirmDialog(
+                      title: _isArchived ? 'Buka Arsip Catatan?' : 'Arsipkan Catatan?',
+                      content: _isArchived
+                          ? 'Catatan ini akan dikembalikan ke daftar catatan utama.'
+                          : 'Catatan ini akan dipindahkan ke folder Arsip.',
+                      confirmLabel: _isArchived ? 'Buka Arsip' : 'Arsipkan',
+                      onConfirm: () {
+                        setState(() {
+                          _isArchived = !_isArchived;
+                          if (_isArchived) _isPinned = false;
+                        });
+                        _saveNote();
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(SnackBar(
+                            content: Text(
+                              _isArchived ? 'Catatan diarsipkan' : 'Catatan dipulihkan dari arsip',
+                              style: const TextStyle(fontFamily: 'Outfit'),
+                            ),
+                            duration: const Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ));
+                        Navigator.pop(context);
+                      },
+                    );
                     break;
                   case 'mindmap':
                     _saveNote();
@@ -603,39 +680,23 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     });
                     break;
                   case 'delete':
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        backgroundColor: AppTheme.surface,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(color: Colors.redAccent.withOpacity(0.3)),
-                        ),
-                        title: const Text('Hapus Catatan?', style: TextStyle(fontFamily: 'Outfit', fontWeight: FontWeight.bold)),
-                        content: const Text('Catatan akan dipindahkan ke Tempat Sampah.', style: TextStyle(fontFamily: 'Outfit')),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Batal', style: TextStyle(fontFamily: 'Outfit')),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              final provider = context.read<NoteProvider>();
-                              provider.moveToTrash(_id);
-                              ScaffoldMessenger.of(context)
-                                ..clearSnackBars()
-                                ..showSnackBar(const SnackBar(
-                                  content: Text('Catatan dipindahkan ke sampah', style: TextStyle(fontFamily: 'Outfit')),
-                                  duration: Duration(seconds: 2),
-                                  behavior: SnackBarBehavior.floating,
-                                ));
-                              Navigator.pop(context);
-                            },
-                            child: const Text('Hapus', style: TextStyle(color: Colors.redAccent, fontFamily: 'Outfit')),
-                          ),
-                        ],
-                      ),
+                    _showEditorConfirmDialog(
+                      title: 'Hapus Catatan?',
+                      content: 'Apakah Anda yakin ingin memindahkan catatan ini ke Tempat Sampah?',
+                      confirmLabel: 'Hapus',
+                      confirmColor: Colors.redAccent,
+                      onConfirm: () {
+                        final provider = context.read<NoteProvider>();
+                        provider.moveToTrash(_id);
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(const SnackBar(
+                            content: Text('Catatan dipindahkan ke sampah', style: TextStyle(fontFamily: 'Outfit')),
+                            duration: Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
+                          ));
+                        Navigator.pop(context);
+                      },
                     );
                     break;
                 }

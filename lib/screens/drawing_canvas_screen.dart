@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/note.dart';
+import '../providers/note_provider.dart';
 import '../theme/app_theme.dart';
 
 class DrawingCanvasScreen extends StatefulWidget {
-  final List<DrawingStroke> initialStrokes;
-  final String category;
+  final List<DrawingStroke>? initialStrokes;
+  final String? category;
+  final bool isStandalone;
 
   const DrawingCanvasScreen({
     super.key,
-    required this.initialStrokes,
-    required this.category,
+    this.initialStrokes,
+    this.category,
+    this.isStandalone = false,
   });
 
   @override
@@ -35,8 +39,9 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
   @override
   void initState() {
     super.initState();
-    _strokes = List.from(widget.initialStrokes);
-    _selectedColor = AppTheme.getColorForCategory(widget.category);
+    _strokes = widget.initialStrokes != null ? List.from(widget.initialStrokes!) : [];
+    final cat = widget.category ?? 'Drawing';
+    _selectedColor = AppTheme.getColorForCategory(cat);
     // Ensure category color is in the palette or set a default neon color
     if (!_neonColors.contains(_selectedColor)) {
       _selectedColor = _neonColors.first;
@@ -81,11 +86,63 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
     });
   }
 
+  void _saveStandaloneDrawing() {
+    if (_strokes.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(
+          content: Text(
+            Provider.of<NoteProvider>(context, listen: false).languageCode == 'en'
+                ? 'Canvas is empty, nothing to save.'
+                : 'Kanvas kosong, tidak ada yang disimpan.',
+            style: const TextStyle(fontFamily: 'Outfit'),
+          ),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ));
+      return;
+    }
+
+    final provider = Provider.of<NoteProvider>(context, listen: false);
+    final isEn = provider.languageCode == 'en';
+    final title = isEn ? 'AuraDraw Sketch' : 'Sketsa AuraDraw';
+
+    final newNote = Note(
+      id: 'drawing_${DateTime.now().millisecondsSinceEpoch}',
+      title: title,
+      content: isEn ? 'Freehand digital sketch.' : 'Sketsa gambar digital bebas.',
+      category: 'Drawing',
+      dateCreated: DateTime.now(),
+      dateModified: DateTime.now(),
+      sketchStrokes: _strokes,
+    );
+
+    provider.addNote(newNote);
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text(
+          isEn ? 'Sketch saved successfully' : 'Sketsa berhasil disimpan',
+          style: const TextStyle(fontFamily: 'Outfit'),
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ));
+
+    Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AuraDraw Kanvas', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('AuraDraw Kanvas', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Outfit')),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          onPressed: () => Navigator.pop(context),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.undo, color: AppTheme.textPrimary),
@@ -101,7 +158,11 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
             icon: const Icon(Icons.check, color: Colors.greenAccent),
             tooltip: 'Simpan Gambar',
             onPressed: () {
-              Navigator.pop(context, _strokes);
+              if (widget.isStandalone) {
+                _saveStandaloneDrawing();
+              } else {
+                Navigator.pop(context, _strokes);
+              }
             },
           ),
         ],

@@ -6,6 +6,8 @@ import '../providers/note_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/translation_helper.dart';
 import 'trash_archive_screen.dart';
+import 'mind_map_screen.dart';
+import 'drawing_canvas_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -238,6 +240,123 @@ class DashboardScreen extends StatelessWidget {
                                   ),
                                 );
                               },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 30),
+
+                      // Section 2.5: Aura Suite (Creative Tools)
+                      Text(
+                        provider.languageCode == 'en' ? 'Aura Creative Suite' : 'Aura Suite Kreatif',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          // AuraMind Card
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: AppTheme.glassDecoration(auraColor: AppTheme.accent),
+                                  child: InkWell(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => const MindMapScreen(),
+                                        ),
+                                      );
+                                    },
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Icon(Icons.hub_outlined, color: AppTheme.accent, size: 28),
+                                        const SizedBox(height: 12),
+                                        const Text(
+                                          'AuraMind',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                            fontFamily: 'Outfit',
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          provider.languageCode == 'en'
+                                              ? 'Interactive Mind Map'
+                                              : 'Peta Pikiran Interaktif',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: AppTheme.textSecondary,
+                                            fontFamily: 'Outfit',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          // AuraDraw Card
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: AppTheme.glassDecoration(auraColor: const Color(0xFF00FF87)),
+                                  child: InkWell(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => const DrawingCanvasScreen(
+                                            isStandalone: true,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Icon(Icons.brush, color: Color(0xFF00FF87), size: 28),
+                                        const SizedBox(height: 12),
+                                        const Text(
+                                          'AuraDraw',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                            fontFamily: 'Outfit',
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          provider.languageCode == 'en'
+                                              ? 'Freehand Canvas'
+                                              : 'Kanvas Gambar Bebas',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: AppTheme.textSecondary,
+                                            fontFamily: 'Outfit',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ],

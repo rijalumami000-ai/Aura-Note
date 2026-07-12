@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/note.dart';
+import '../providers/note_provider.dart';
 import '../theme/app_theme.dart';
 
 class MindMapNode {
@@ -28,60 +31,127 @@ class MindMapLink {
 }
 
 class MindMapScreen extends StatefulWidget {
-  final Note note;
+  final Note? note;
 
-  const MindMapScreen({super.key, required this.note});
+  const MindMapScreen({super.key, this.note});
 
   @override
   State<MindMapScreen> createState() => _MindMapScreenState();
 }
 
-class _MindMapScreenState extends State<MindMapScreen> {
+class _MindMapScreenState extends State<MindMapScreen> with SingleTickerProviderStateMixin {
   final List<MindMapNode> _nodes = [];
   final List<MindMapLink> _links = [];
-  String? _draggedNodeId;
   final TransformationController _transformationController = TransformationController();
+  
+  late Note _currentNote;
+  bool _isNewMindMap = false;
 
   @override
   void initState() {
     super.initState();
+    
+    // Inisialisasi Note (Mandiri vs Terikat)
+    if (widget.note != null) {
+      _currentNote = widget.note!;
+    } else {
+      _isNewMindMap = true;
+      _currentNote = Note(
+        id: 'mindmap_${DateTime.now().millisecondsSinceEpoch}',
+        title: 'Peta Pikiran AuraMind',
+        content: '',
+        category: 'MindMap',
+        dateCreated: DateTime.now(),
+        dateModified: DateTime.now(),
+      );
+    }
+
     _buildMindMap();
+
+    // Set initial zoom/translation agar root node berada di tengah layar
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _centerOnRoot();
+    });
   }
 
-  // Populate node coordinates and links dynamically from the note content
-  void _buildMindMap() {
-    final auraColor = AppTheme.getColorForCategory(widget.note.category);
+  void _centerOnRoot() {
+    final size = MediaQuery.of(context).size;
+    final double scale = 0.9;
     
-    // 1. Root Node (Center)
+    // Posisi root adalah (1250, 1000). Kita posisikan di tengah viewport screen
+    final double tx = (size.width / 2) - (1250 * scale);
+    final double ty = ((size.height - 80) / 2) - (1000 * scale);
+
+    _transformationController.value = Matrix4.identity()
+      ..translate(tx, ty)
+      ..scale(scale);
+  }
+
+  // Populate node coordinates and links dynamically
+  void _buildMindMap() {
+    final auraColor = AppTheme.getColorForCategory(_currentNote.category);
+    final double centerX = 1250.0;
+    final double centerY = 1000.0;
+
+    // 1. Cek apakah content berisi database JSON MindMap yang tersimpan
+    if (_currentNote.content.startsWith('{"nodes":')) {
+      try {
+        final data = jsonDecode(_currentNote.content);
+        final List<dynamic> nodesJson = data['nodes'];
+        final List<dynamic> linksJson = data['links'];
+
+        _nodes.clear();
+        _links.clear();
+
+        for (var n in nodesJson) {
+          _nodes.add(MindMapNode(
+            id: n['id'],
+            label: n['label'],
+            position: Offset(n['dx'], n['dy']),
+            color: Color(n['color']),
+            type: n['type'],
+          ));
+        }
+
+        for (var l in linksJson) {
+          _links.add(MindMapLink(l['parentId'], l['childId']));
+        }
+        return; // Peta pikiran berhasil di-restore!
+      } catch (e) {
+        debugPrint('Gagal deserialize, fallback ke parser: $e');
+      }
+    }
+
+    // 2. Parser fallback (ekstrak konten catatan ke visual MindMap)
     final rootId = 'root';
     _nodes.add(MindMapNode(
       id: rootId,
-      label: widget.note.title.isEmpty ? 'Catatan Utama' : widget.note.title,
-      position: const Offset(400, 300),
+      label: _currentNote.title.isEmpty ? 'Catatan Utama' : _currentNote.title,
+      position: Offset(centerX, centerY),
       color: auraColor,
       type: 'root',
     ));
 
     double angleStep = 0.0;
     int branchesCount = 0;
-    if (widget.note.aiSummary != null && widget.note.aiSummary!.isNotEmpty) branchesCount++;
-    if (widget.note.todos.isNotEmpty) branchesCount++;
-    if (widget.note.content.isNotEmpty) branchesCount++;
+    if (_currentNote.aiSummary != null && _currentNote.aiSummary!.isNotEmpty) branchesCount++;
+    if (_currentNote.todos.isNotEmpty) branchesCount++;
+    if (_currentNote.content.isNotEmpty && !_currentNote.content.startsWith('{"nodes":')) branchesCount++;
     
     if (branchesCount > 0) {
       angleStep = (2 * math.pi) / branchesCount;
     }
 
     int branchIndex = 0;
-    final double radius = 160.0;
+    final double radius = 220.0;
 
-    // 2. AI Summary Branch
-    if (widget.note.aiSummary != null && widget.note.aiSummary!.isNotEmpty) {
+    // AI Summary Branch
+    if (_currentNote.aiSummary != null && _currentNote.aiSummary!.isNotEmpty) {
       final double angle = branchIndex * angleStep;
       final branchId = 'branch_ai';
       final branchPos = Offset(
-        400 + radius * math.cos(angle),
-        300 + radius * math.sin(angle),
+        centerX + radius * math.cos(angle),
+        centerY + radius * math.sin(angle),
       );
 
       _nodes.add(MindMapNode(
@@ -93,8 +163,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
       ));
       _links.add(MindMapLink(rootId, branchId));
 
-      // Sub-nodes from AI Summary bullets
-      final summaryLines = widget.note.aiSummary!
+      final summaryLines = _currentNote.aiSummary!
           .split('\n')
           .where((l) => l.trim().startsWith('-') || l.trim().startsWith('•') || l.trim().isNotEmpty)
           .take(3)
@@ -104,18 +173,18 @@ class _MindMapScreenState extends State<MindMapScreen> {
         final subId = 'ai_sub_$i';
         final double subAngle = angle - 0.4 + (i * 0.4);
         final subPos = Offset(
-          branchPos.dx + 110 * math.cos(subAngle),
-          branchPos.dy + 110 * math.sin(subAngle),
+          branchPos.dx + 130 * math.cos(subAngle),
+          branchPos.dy + 130 * math.sin(subAngle),
         );
 
         String cleanLine = summaryLines[i].replaceAll(RegExp(r'^[-•*\s]+'), '');
-        if (cleanLine.length > 25) cleanLine = '${cleanLine.substring(0, 22)}...';
+        if (cleanLine.length > 22) cleanLine = '${cleanLine.substring(0, 19)}...';
 
         _nodes.add(MindMapNode(
           id: subId,
           label: cleanLine,
           position: subPos,
-          color: AppTheme.accent.withOpacity(0.7),
+          color: AppTheme.accent.withOpacity(0.8),
           type: 'branch_ai',
         ));
         _links.add(MindMapLink(branchId, subId));
@@ -123,13 +192,13 @@ class _MindMapScreenState extends State<MindMapScreen> {
       branchIndex++;
     }
 
-    // 3. Todos/Tasks Branch
-    if (widget.note.todos.isNotEmpty) {
+    // Todos/Tasks Branch
+    if (_currentNote.todos.isNotEmpty) {
       final double angle = branchIndex * angleStep;
       final branchId = 'branch_todo';
       final branchPos = Offset(
-        400 + radius * math.cos(angle),
-        300 + radius * math.sin(angle),
+        centerX + radius * math.cos(angle),
+        centerY + radius * math.sin(angle),
       );
 
       _nodes.add(MindMapNode(
@@ -141,25 +210,24 @@ class _MindMapScreenState extends State<MindMapScreen> {
       ));
       _links.add(MindMapLink(rootId, branchId));
 
-      // Sub-nodes from Todos
-      final todosToRender = widget.note.todos.take(3).toList();
+      final todosToRender = _currentNote.todos.take(3).toList();
       for (int i = 0; i < todosToRender.length; i++) {
         final todo = todosToRender[i];
         final subId = 'todo_sub_$i';
         final double subAngle = angle - 0.4 + (i * 0.4);
         final subPos = Offset(
-          branchPos.dx + 110 * math.cos(subAngle),
-          branchPos.dy + 110 * math.sin(subAngle),
+          branchPos.dx + 130 * math.cos(subAngle),
+          branchPos.dy + 130 * math.sin(subAngle),
         );
 
         String cleanText = todo.title.isEmpty ? 'Tugas Kosong' : todo.title;
-        if (cleanText.length > 20) cleanText = '${cleanText.substring(0, 18)}...';
+        if (cleanText.length > 20) cleanText = '${cleanText.substring(0, 17)}...';
 
         _nodes.add(MindMapNode(
           id: subId,
           label: cleanText,
           position: subPos,
-          color: todo.isDone ? Colors.greenAccent : const Color(0xFF00F2FE).withOpacity(0.7),
+          color: todo.isDone ? Colors.greenAccent : const Color(0xFF00F2FE).withOpacity(0.8),
           type: 'branch_todo',
         ));
         _links.add(MindMapLink(branchId, subId));
@@ -167,13 +235,13 @@ class _MindMapScreenState extends State<MindMapScreen> {
       branchIndex++;
     }
 
-    // 4. Content / Notes Branch
-    if (widget.note.content.isNotEmpty) {
+    // Content Branch
+    if (_currentNote.content.isNotEmpty && !_currentNote.content.startsWith('{"nodes":')) {
       final double angle = branchIndex * angleStep;
       final branchId = 'branch_content';
       final branchPos = Offset(
-        400 + radius * math.cos(angle),
-        300 + radius * math.sin(angle),
+        centerX + radius * math.cos(angle),
+        centerY + radius * math.sin(angle),
       );
 
       _nodes.add(MindMapNode(
@@ -185,28 +253,79 @@ class _MindMapScreenState extends State<MindMapScreen> {
       ));
       _links.add(MindMapLink(rootId, branchId));
 
-      // Extract brief snippets
-      String snip = widget.note.content;
-      if (snip.length > 30) snip = '${snip.substring(0, 28)}...';
+      String snip = _currentNote.content;
+      if (snip.length > 25) snip = '${snip.substring(0, 22)}...';
 
       final subId = 'content_sub';
       final subPos = Offset(
-        branchPos.dx + 110 * math.cos(angle),
-        branchPos.dy + 110 * math.sin(angle),
+        branchPos.dx + 130 * math.cos(angle),
+        branchPos.dy + 130 * math.sin(angle),
       );
 
       _nodes.add(MindMapNode(
         id: subId,
         label: snip,
         position: subPos,
-        color: Colors.amberAccent.withOpacity(0.7),
+        color: Colors.amberAccent.withOpacity(0.8),
         type: 'branch_content',
       ));
       _links.add(MindMapLink(branchId, subId));
     }
   }
 
-  // Handle addition of custom node ideas
+  // Serialize nodes & links to JSON String to save into Note content
+  String _serializeMindMap() {
+    final nodesJson = _nodes.map((n) => {
+      'id': n.id,
+      'label': n.label,
+      'dx': n.position.dx,
+      'dy': n.position.dy,
+      'color': n.color.value,
+      'type': n.type,
+    }).toList();
+
+    final linksJson = _links.map((l) => {
+      'parentId': l.parentId,
+      'childId': l.childId,
+    }).toList();
+
+    return jsonEncode({
+      'nodes': nodesJson,
+      'links': linksJson,
+    });
+  }
+
+  void _saveMindMap() {
+    final jsonContent = _serializeMindMap();
+    _currentNote.content = jsonContent;
+    _currentNote.dateModified = DateTime.now();
+
+    final provider = context.read<NoteProvider>();
+    if (_isNewMindMap) {
+      provider.addNote(_currentNote);
+      setState(() {
+        _isNewMindMap = false;
+      });
+    } else {
+      provider.updateNote(_currentNote);
+    }
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text(
+          provider.languageCode == 'en' 
+              ? 'MindMap saved successfully' 
+              : 'Peta Pikiran berhasil disimpan',
+          style: const TextStyle(fontFamily: 'Outfit'),
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ));
+  }
+
+  // Add custom idea node
   void _addCustomNode() {
     final TextEditingController ideaController = TextEditingController();
 
@@ -246,11 +365,12 @@ class _MindMapScreenState extends State<MindMapScreen> {
                   if (text.isNotEmpty) {
                     setState(() {
                       final newId = 'custom_${DateTime.now().millisecondsSinceEpoch}';
-                      // Spawn close to the root
                       final double randAngle = math.Random().nextDouble() * 2 * math.pi;
+                      final double radius = 150 + (math.Random().nextDouble() * 100);
+                      
                       final newPos = Offset(
-                        400 + 130 * math.cos(randAngle),
-                        300 + 130 * math.sin(randAngle),
+                        1250 + radius * math.cos(randAngle),
+                        1000 + radius * math.sin(randAngle),
                       );
 
                       _nodes.add(MindMapNode(
@@ -278,92 +398,181 @@ class _MindMapScreenState extends State<MindMapScreen> {
     );
   }
 
+  void _editNodeLabel(MindMapNode node) {
+    final TextEditingController editController = TextEditingController(text: node.label);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: AlertDialog(
+            backgroundColor: AppTheme.surface.withOpacity(0.9),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(color: Colors.white.withOpacity(0.08)),
+            ),
+            title: const Text(
+              'Ubah Label Ide',
+              style: TextStyle(color: Colors.white, fontFamily: 'Outfit', fontWeight: FontWeight.bold),
+            ),
+            content: TextField(
+              controller: editController,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: node.color)),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Batal', style: TextStyle(color: AppTheme.textSecondary)),
+              ),
+              if (node.type == 'custom') // Hanya ijinkan hapus untuk kustom node
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _nodes.removeWhere((n) => n.id == node.id);
+                      _links.removeWhere((l) => l.parentId == node.id || l.childId == node.id);
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Hapus', style: TextStyle(color: Colors.redAccent)),
+                ),
+              ElevatedButton(
+                onPressed: () {
+                  final text = editController.text.trim();
+                  if (text.isNotEmpty) {
+                    setState(() {
+                      node.label = text;
+                    });
+                    Navigator.pop(context);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: node.color,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('Simpan', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final auraColor = AppTheme.getColorForCategory(widget.note.category);
+    final auraColor = AppTheme.getColorForCategory(_currentNote.category);
 
     return Scaffold(
+      backgroundColor: const Color(0xFF03030F), // Deep space background
       appBar: AppBar(
-        title: const Text('AuraMind Peta Pikiran', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('AuraMind Peta Pikiran', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Outfit')),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.gps_fixed_rounded, color: AppTheme.textPrimary),
+            tooltip: 'Pusatkan Peta',
+            onPressed: _centerOnRoot,
+          ),
+          IconButton(
+            icon: const Icon(Icons.save_rounded, color: Colors.greenAccent),
+            tooltip: 'Simpan Peta Pikiran',
+            onPressed: _saveMindMap,
+          ),
+        ],
       ),
       body: Stack(
         children: [
-          // Infinite grid-like panning viewer
+          // 2D Pan and Pinch-zoom Canvas
           InteractiveViewer(
             transformationController: _transformationController,
-            boundaryMargin: const EdgeInsets.all(500),
-            minScale: 0.5,
-            maxScale: 2.5,
-            child: GestureDetector(
-              onPanStart: (details) {
-                // Find local coordinates inside the viewer
-                final RenderBox box = context.findRenderObject() as RenderBox;
-                final localTouch = box.globalToLocal(details.globalPosition);
-                // Adjust for zoom matrix offsets
-                final matrix = _transformationController.value;
-                final double scale = matrix.getMaxScaleOnAxis();
-                final double translationX = matrix.entry(0, 3);
-                final double translationY = matrix.entry(1, 3);
-                
-                final adjustedTouch = Offset(
-                  (localTouch.dx - translationX) / scale,
-                  (localTouch.dy - translationY) / scale,
-                );
-
-                // Detect node hit
-                String? hitId;
-                for (var node in _nodes) {
-                  final dist = (node.position - adjustedTouch).distance;
-                  if (dist < 45) { // Radius of touch recognition
-                    hitId = node.id;
-                    break;
-                  }
-                }
-
-                if (hitId != null) {
-                  setState(() {
-                    _draggedNodeId = hitId;
-                  });
-                }
-              },
-              onPanUpdate: (details) {
-                if (_draggedNodeId != null) {
-                  final matrix = _transformationController.value;
-                  final double scale = matrix.getMaxScaleOnAxis();
-                  setState(() {
-                    final node = _nodes.firstWhere((n) => n.id == _draggedNodeId);
-                    // Adjust node position relative to details delta and scale
-                    node.position += details.delta / scale;
-                  });
-                }
-              },
-              onPanEnd: (_) {
-                setState(() {
-                  _draggedNodeId = null;
-                });
-              },
-              child: Container(
-                width: 900,
-                height: 700,
-                color: const Color(0xFF03030F), // Deep cosmic background
-                child: CustomPaint(
-                  painter: MindMapPainter(
-                    nodes: _nodes,
-                    links: _links,
-                    accentColor: auraColor,
+            boundaryMargin: const EdgeInsets.all(800),
+            minScale: 0.15,
+            maxScale: 3.0,
+            child: SizedBox(
+              width: 2500,
+              height: 2000,
+              child: Stack(
+                children: [
+                  // Latar belakang garis penghubung (Bezier curves)
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: MindMapLinksPainter(
+                        nodes: _nodes,
+                        links: _links,
+                      ),
+                    ),
                   ),
-                ),
+
+                  // Node widgets diposisikan secara dinamis
+                  ..._nodes.map((node) {
+                    final double radius = node.type == 'root' ? 52.0 : 42.0;
+                    return Positioned(
+                      left: node.position.dx - radius,
+                      top: node.position.dy - radius,
+                      child: GestureDetector(
+                        onPanUpdate: (details) {
+                          final matrix = _transformationController.value;
+                          final double scale = matrix.getMaxScaleOnAxis();
+                          setState(() {
+                            // Gerakkan node berdasarkan pergeseran delta disesuaikan dengan scale zoom
+                            node.position += details.delta / scale;
+                          });
+                        },
+                        onDoubleTap: () => _editNodeLabel(node),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.grab,
+                          child: Container(
+                            width: radius * 2,
+                            height: radius * 2,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFF0C0C1E).withOpacity(0.92),
+                              border: Border.all(color: node.color, width: 1.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: node.color.withOpacity(0.25),
+                                  blurRadius: 14,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                node.label,
+                                style: TextStyle(
+                                  fontSize: node.type == 'root' ? 10.5 : 9.0,
+                                  color: Colors.white,
+                                  fontFamily: 'Outfit',
+                                  fontWeight: node.type == 'root' ? FontWeight.bold : FontWeight.normal,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ],
               ),
             ),
           ),
 
-          // Action Info Overlay
+          // Papan petunjuk premium
           Positioned(
             top: 10,
             left: 20,
@@ -374,14 +583,18 @@ class _MindMapScreenState extends State<MindMapScreen> {
                 filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  color: Colors.white.withOpacity(0.02),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.02),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  ),
                   child: Row(
                     children: [
                       const Icon(Icons.info_outline, color: AppTheme.accent, size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Seret bulatan untuk menata ide. Gunakan gestur dua jari untuk cubit-zoom dan geser kanvas.',
+                          'Seret bulatan node secara langsung untuk memindahkan. Seret kanvas kosong untuk geser kamera. Klik dua kali node untuk mengubah nama / menghapus ide.',
                           style: TextStyle(fontSize: 10, color: AppTheme.textSecondary.withOpacity(0.8), fontFamily: 'Outfit'),
                         ),
                       ),
@@ -392,7 +605,7 @@ class _MindMapScreenState extends State<MindMapScreen> {
             ),
           ),
 
-          // FAB to add custom idea node
+          // Tombol untuk menambah ide kustom baru
           Positioned(
             bottom: 30,
             right: 24,
@@ -412,30 +625,31 @@ class _MindMapScreenState extends State<MindMapScreen> {
   }
 }
 
-// Mind Map Custom Painter to render lines and neon glowing nodes
-class MindMapPainter extends CustomPainter {
+// Painter khusus untuk menggambar garis kurva bersinar di latar belakang
+class MindMapLinksPainter extends CustomPainter {
   final List<MindMapNode> nodes;
   final List<MindMapLink> links;
-  final Color accentColor;
 
-  MindMapPainter({
+  MindMapLinksPainter({
     required this.nodes,
     required this.links,
-    required this.accentColor,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Draw Links (bezier curves)
     final linkPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
 
     for (var link in links) {
-      final parent = nodes.firstWhere((n) => n.id == link.parentId);
-      final child = nodes.firstWhere((n) => n.id == link.childId);
+      final parentIndex = nodes.indexWhere((n) => n.id == link.parentId);
+      final childIndex = nodes.indexWhere((n) => n.id == link.childId);
 
-      // Create curvy bezier link line
+      if (parentIndex == -1 || childIndex == -1) continue;
+
+      final parent = nodes[parentIndex];
+      final child = nodes[childIndex];
+
       final path = Path();
       path.moveTo(parent.position.dx, parent.position.dy);
       
@@ -454,67 +668,14 @@ class MindMapPainter extends CustomPainter {
         child.position.dx, child.position.dy,
       );
 
-      // Draw connection with glowing color matching child node
+      // Gambar kurva bezier neon glow di latar belakang
       canvas.drawPath(
         path,
-        linkPaint..color = child.color.withOpacity(0.35)..strokeWidth = 2.0,
-      );
-    }
-
-    // 2. Draw Nodes
-    for (var node in nodes) {
-      final double radius = node.type == 'root' ? 44.0 : 34.0;
-
-      // Glow Shadow Paint
-      final glowPaint = Paint()
-        ..color = node.color.withOpacity(0.18)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-      canvas.drawCircle(node.position, radius + 4, glowPaint);
-
-      // Solid Outer border
-      final borderPaint = Paint()
-        ..color = node.color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5;
-      canvas.drawCircle(node.position, radius, borderPaint);
-
-      // Core Background
-      final fillPaint = Paint()
-        ..color = const Color(0xFF0C0C1E).withOpacity(0.85)
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(node.position, radius - 1.0, fillPaint);
-
-      // Draw Node Label Text
-      final textSpan = TextSpan(
-        text: node.label,
-        style: TextStyle(
-          fontSize: node.type == 'root' ? 10 : 8.5,
-          color: Colors.white,
-          fontFamily: 'Outfit',
-          fontWeight: node.type == 'root' ? FontWeight.bold : FontWeight.normal,
-        ),
-      );
-
-      final textPainter = TextPainter(
-        text: textSpan,
-        textAlign: TextAlign.center,
-        textDirection: TextDirection.ltr,
-        maxLines: 2,
-        ellipsis: '..',
-      );
-      textPainter.layout(maxWidth: radius * 1.7);
-      
-      // Center the text inside the node circle
-      textPainter.paint(
-        canvas,
-        Offset(
-          node.position.dx - (textPainter.width / 2),
-          node.position.dy - (textPainter.height / 2),
-        ),
+        linkPaint..color = child.color.withOpacity(0.32)..strokeWidth = 2.0,
       );
     }
   }
 
   @override
-  bool shouldRepaint(covariant MindMapPainter oldDelegate) => true;
+  bool shouldRepaint(covariant MindMapLinksPainter oldDelegate) => true;
 }
