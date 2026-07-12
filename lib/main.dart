@@ -9,9 +9,14 @@ import 'screens/dashboard_screen.dart';
 import 'screens/trash_archive_screen.dart';
 import 'screens/note_editor_screen.dart';
 import 'utils/translation_helper.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(
     MultiProvider(
       providers: [
